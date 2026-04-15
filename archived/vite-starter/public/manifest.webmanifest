@@ -1,0 +1,11 @@
+{
+  "name": "의성김씨 아천문중 세보",
+  "short_name": "아천문중 세보",
+  "description": "디지털 족보 및 문중 정보 시스템",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eaf5ff",
+  "theme_color": "#eaf5ff",
+  "icons": []
+}
+
