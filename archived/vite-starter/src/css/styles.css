@@ -1,0 +1,97 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif;
+  background: #f7fbff;
+  color: #1f2937;
+}
+.site-header {
+  padding: 24px 16px 20px;
+  background: #eaf5ff;
+  border-bottom: 1px solid #d8e9f8;
+}
+.site-header h1 {
+  margin: 0 0 6px;
+  font-size: 1.5rem;
+}
+.subtitle {
+  margin: 0;
+  color: #4b5563;
+}
+.page {
+  padding: 16px;
+  padding-bottom: 88px;
+}
+.page-section { display: none; }
+.page-section.active { display: block; }
+.card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 6px 20px rgba(31,41,55,0.05);
+}
+.card h2 { margin-top: 0; font-size: 1.1rem; }
+.search-row, .tab-row, .section-row, .tree-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+input, button {
+  font: inherit;
+}
+input {
+  flex: 1 1 180px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+}
+button {
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 10px;
+  cursor: pointer;
+}
+button.is-active {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+.candidate-list, .notice-list, .summary-grid, .kinship-result, .acheon-content {
+  margin-top: 12px;
+}
+.tree-stage, .map-stage {
+  margin-top: 12px;
+  min-height: 240px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+}
+.subtab-panel { display: none; margin-top: 12px; }
+.subtab-panel.active { display: block; }
+.muted { color: #6b7280; }
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(255,255,255,0.96);
+  border-top: 1px solid #e5e7eb;
+  backdrop-filter: blur(12px);
+}
+.bottom-nav .nav-btn {
+  min-height: 44px;
+}
+@media (min-width: 900px) {
+  .page {
+    max-width: 980px;
+    margin: 0 auto;
+  }
+}
+
