@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>의성김씨 아천문중 세보</title>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Pretendard', sans-serif; background-color: #f8fafc; }
+    .page { display: none; }
+    .page.active { display: block; }
+  </style>
+</head>
+<body class="pb-20">
+
+  <header class="bg-blue-600 text-white p-4 text-center shadow-md sticky top-0 z-50">
+    <h1 class="text-xl font-bold">의성김씨 아천문중</h1>
+  </header>
+
+  <main class="container mx-auto p-4">
+    <section id="page-home" class="page active space-y-4">
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <p class="text-sm text-slate-500 mb-2 font-medium"> (성을 제외한) 이름을 입력하면 세보를 불러옵니다. </p>
+        <div class="flex gap-2">
+          <input id="search-input" type="text" placeholder="이름 입력 (예: 보영)" class="flex-1 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+          <button onclick="handleSearch()" class="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-blue-700 active:scale-95 transition-all">검색</button>
+        </div>
+      </div>
+      <div id="search-result" class="space-y-3">
+        </div>
+    </section>
+
+    <section id="page-history" class="page">
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <h2 class="text-lg font-bold mb-4 italic text-blue-800">📜 선조의 발자취</h2>
+        <div id="history-content" class="text-slate-600 leading-relaxed"> 문중의 역사를 불러오고 있습니다... </div>
+      </div>
+    </section>
+
+    <section id="page-clan" class="page">
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <h2 class="text-lg font-bold mb-4 text-blue-800">🏛️ 아천문중 소식</h2>
+        <div id="notice-content" class="space-y-4"> 공지사항을 확인 중입니다... </div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="fixed bottom-0 w-full bg-white border-t border-slate-200 flex justify-around py-3 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+    <button onclick="showPage('home')" class="nav-item flex flex-col items-center text-blue-600" id="nav-home">
+      <span class="material-symbols-outlined">home</span>
+      <span class="text-[10px] mt-1">홈</span>
+    </button>
+    <button onclick="showPage('history')" class="nav-item flex flex-col items-center text-slate-400" id="nav-history">
+      <span class="material-symbols-outlined">history_edu</span>
+      <span class="text-[10px] mt-1">선조의 발자취</span>
+    </button>
+    <button onclick="showPage('clan')" class="nav-item flex flex-col items-center text-slate-400" id="nav-clan">
+      <span class="material-symbols-outlined">groups</span>
+      <span class="text-[10px] mt-1">아천문중</span>
+    </button>
+  </nav>
+
+  <script>
+    function showPage(pageId) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('page-' + pageId).classList.add('active');
+      
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.replace('text-blue-600', 'text-slate-400'));
+      document.getElementById('nav-' + pageId).classList.replace('text-slate-400', 'text-blue-600');
+    }
+    
+    // 검색 실행 함수 (main.js와 연결됨)
+    function handleSearch() {
+      const name = document.getElementById('search-input').value;
+      if(window.doSearch) window.doSearch(name);
+    }
+  </script>
+</body>
+</html>
+
