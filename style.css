@@ -1,0 +1,187 @@
+/* Tailwind 보완: 세부 터치와 접근성 */
+#name-input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+}
+
+#result-list li {
+  animation: fade-up 0.35s ease-out both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#map-leaflet {
+  min-height: min(50vh, 420px);
+}
+
+#map-leaflet .leaflet-tile-pane {
+  filter: saturate(0.92);
+}
+
+.view-panel.hidden {
+  display: none !important;
+}
+
+.eight-kin-tree-view:active {
+  cursor: grabbing;
+}
+
+/* 헤더: 테두리/구분선은 검은 실선(선명) */
+#app-header .hdr-frame {
+  border: 1px solid rgba(0, 0, 0, 0.85);
+}
+#app-header .hdr-divider {
+  border-top: 1px solid rgba(0, 0, 0, 0.85);
+}
+#app-header .hdr-divider:first-child {
+  border-top: 0;
+}
+#app-header .hdr-vdiv:not(:last-child) {
+  border-right: 1px solid rgba(0, 0, 0, 0.85);
+}
+#app-header .hdr-subbtn {
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  background: rgba(255, 255, 255, 0.5);
+}
+#app-header .hdr-subbtn:active {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+#bottom-nav .material-symbols-outlined {
+  font-size: 22px;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+/* 하단 내비가 다시 보이도록 강제(캐시/우선순위 이슈 방지) */
+#bottom-nav {
+  display: block;
+}
+
+/* 신문풍 타이포(미세 조정) */
+html {
+  text-rendering: geometricPrecision;
+}
+
+body {
+  letter-spacing: -0.01em;
+}
+
+/* 카드 그림자/테두리 톤 다운 */
+.search-result-card {
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+}
+
+/* 홈 “종이 박스” 공통 스타일 (검은 실선 + 살짝 진한 종이색) */
+.paper-box {
+  /* 박스 바탕색은 헤더와 동일 */
+  background: #f3efe4;
+  /* 박스 테두리는 헤더 톤(연한색) */
+  border: 1px solid rgba(120, 113, 108, 0.35);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.paper-box-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(120, 113, 108, 0.25);
+}
+.paper-box-body {
+  padding: 14px 16px;
+}
+.paper-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #57534e;
+}
+.paper-title {
+  margin-top: 4px;
+  font-family: "Noto Serif KR", "Iropke Batang", "Batang", serif;
+  font-size: 22px;
+  font-weight: 800;
+  color: #1a1816;
+  line-height: 1.15;
+}
+.paper-sub {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #57534e;
+}
+.paper-input {
+  min-height: 44px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: rgba(255, 255, 255, 0.65);
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #1a1816;
+  outline: none;
+}
+.paper-input:focus {
+  border-color: rgba(139, 41, 66, 0.55);
+  box-shadow: 0 0 0 3px rgba(139, 41, 66, 0.12);
+}
+.paper-icon-btn {
+  height: 44px;
+  width: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: rgba(255, 255, 255, 0.65);
+}
+.paper-action-btn {
+  height: 44px;
+  border-radius: 12px;
+  padding: 0 16px;
+  background: #1f2937;
+  color: #fff;
+  font-weight: 700;
+}
+.paper-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: rgba(255, 255, 255, 0.65);
+  padding: 10px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1a1816;
+}
+
+/* 홈 큰 박스(어제 화면 틀 유지 + 더 진한 종이색 + 검은 실선) */
+.home-big-box {
+  border: 1px solid rgba(0, 0, 0, 0.85) !important;
+  background: #f1eadb !important;
+}
+
+/* 참고 이미지 느낌: 격자형(진한 실선) */
+.grid-paper {
+  border-color: rgba(0, 0, 0, 0.78) !important;
+}
+.grid-paper > * {
+  border-color: rgba(0, 0, 0, 0.78) !important;
+}
+
+.grid-paper-dash {
+  border-color: rgba(0, 0, 0, 0.45) !important;
+}
+
+/* 어제 화면으로 되돌릴 때 사용: 격자 효과 끄기 */
+body[data-yesterday-ui="1"] .grid-paper,
+body[data-yesterday-ui="1"] .grid-paper > * {
+  border-color: rgba(120, 113, 108, 0.7) !important; /* stone-500 톤 */
+}
+body[data-yesterday-ui="1"] .grid-paper-dash {
+  border-color: rgba(120, 113, 108, 0.7) !important;
+}
