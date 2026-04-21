@@ -4347,19 +4347,10 @@ function paintGenRangeHorizontalScrollTree(people, minGen, maxGen, wrap, svgEl) 
     if (typeof n.gen === "number") inferred.set(n.id, n.gen);
   });
 
-  // 성능: 현재 화면에서 "보이는 쪽 페이지" 중심으로만 그려 렌더 부담을 낮춘다.
-  // - 왼쪽 페이지: 1~6세(6세까지 포함해 경계 연결)
-  // - 오른쪽 페이지: 5~10세(5세 포함)
-  const pageNow = (() => {
-    try {
-      const pageW = Math.max(320, wrap.clientWidth || 360);
-      return wrap.scrollLeft > pageW * 0.5 ? 1 : 0;
-    } catch {
-      return 0;
-    }
-  })();
-  const renderMinGen = pageNow === 0 ? minGen : Math.max(minGen, minGen + 4);
-  const renderMaxGen = pageNow === 0 ? Math.min(maxGen, minGen + 5) : maxGen;
+  // (안정/정합) 1-10세 전용은 "부분 렌더"를 하지 않고 한 번에 전 범위를 그린다.
+  // 부분 렌더는 앞/뒤 페이지가 비거나(앞만/뒤만) 깜빡이는 원인이 되었다.
+  const renderMinGen = minGen;
+  const renderMaxGen = maxGen;
 
   const nodes = nodesRaw
     .map((n) => ({ ...n, gen: inferred.get(n.id) ?? n.gen ?? null }))
@@ -4857,24 +4848,7 @@ async function updateTreeView() {
       return;
     }
     paintGenRangeHorizontalScrollTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
-    // 스크롤로 페이지가 바뀌면(좌/우) 가벼운 재렌더만 하도록 이벤트 1회 설치
-    if (!wrap.dataset.genrangeScrollBound) {
-      wrap.dataset.genrangeScrollBound = "1";
-      let raf = 0;
-      let lastPage = -1;
-      wrap.addEventListener("scroll", () => {
-        if (raf) return;
-        raf = requestAnimationFrame(() => {
-          raf = 0;
-          const pageW = Math.max(320, wrap.clientWidth || 360);
-          const page = wrap.scrollLeft > pageW * 0.5 ? 1 : 0;
-          if (page === lastPage) return;
-          lastPage = page;
-          // 캐시된 people로 즉시 재렌더(네트워크 없음)
-          paintGenRangeHorizontalScrollTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
-        });
-      });
-    }
+    // 전체를 한 번에 그리므로 스크롤 중 재렌더는 하지 않는다(깜빡임/속도 저하 방지).
     return;
   }
 
