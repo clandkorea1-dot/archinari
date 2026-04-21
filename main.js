@@ -15,6 +15,8 @@ const debugLogEl = document.getElementById("debug-log");
 const sheetUpdateStampEl = document.getElementById("sheet-update-stamp");
 const homeNoticeListEl = document.getElementById("home-notice-list");
 const homeNoticeHintEl = document.getElementById("home-notice-hint");
+const hdrWeatherEl = document.getElementById("hdr-weather");
+const hdrWeatherTempEl = document.getElementById("hdr-weather-temp");
 
 const DEBUG = new URLSearchParams(location.search).get("debug") === "1";
 if (DEBUG && debugDetails) debugDetails.classList.remove("hidden");
@@ -47,6 +49,59 @@ try {
   // ignore
 }
 
+/* ---------- 헤더: 경북 영주 날씨(현재 기온/아이콘) ---------- */
+
+const YJ_WEATHER = {
+  lat: 36.8057, // 영주 대략
+  lon: 128.624,
+  tz: "Asia/Seoul",
+};
+
+function weatherCodeToIcon(code) {
+  const c = Number(code);
+  if (!Number.isFinite(c)) return "cloud";
+  // Open-Meteo weather_code 기준(간단 매핑)
+  if (c === 0) return "sunny";
+  if (c === 1 || c === 2) return "partly_cloudy_day";
+  if (c === 3) return "cloud";
+  if (c === 45 || c === 48) return "foggy";
+  if (c === 51 || c === 53 || c === 55) return "rainy";
+  if (c === 56 || c === 57) return "weather_hail";
+  if (c === 61 || c === 63 || c === 65) return "rainy";
+  if (c === 66 || c === 67) return "weather_hail";
+  if (c === 71 || c === 73 || c === 75) return "ac_unit"; // snow
+  if (c === 77) return "ac_unit";
+  if (c === 80 || c === 81 || c === 82) return "rainy";
+  if (c === 85 || c === 86) return "ac_unit";
+  if (c === 95 || c === 96 || c === 99) return "thunderstorm";
+  return "cloud";
+}
+
+async function refreshHeaderWeather() {
+  if (!hdrWeatherEl || !hdrWeatherTempEl) return;
+  try {
+    const url = new URL("https://api.open-meteo.com/v1/forecast");
+    url.searchParams.set("latitude", String(YJ_WEATHER.lat));
+    url.searchParams.set("longitude", String(YJ_WEATHER.lon));
+    url.searchParams.set("current", "temperature_2m,weather_code");
+    url.searchParams.set("timezone", YJ_WEATHER.tz);
+    url.searchParams.set("temperature_unit", "celsius");
+
+    const res = await fetch(url.toString(), { method: "GET" });
+    const json = await res.json();
+    const cur = json?.current;
+    const t = cur?.temperature_2m;
+    const code = cur?.weather_code;
+    const temp = Number(t);
+    if (Number.isFinite(temp)) hdrWeatherTempEl.textContent = `${Math.round(temp)}°`;
+    const ic = weatherCodeToIcon(code);
+    const iconEl = hdrWeatherEl.querySelector(".hdr-weather-ic");
+    if (iconEl) iconEl.textContent = ic;
+  } catch {
+    // 실패 시 조용히 유지(네트워크/CORS 등)
+  }
+}
+
 /** 마지막 검색 결과 — 가계도 인물 목록에 사용 */
 let lastSearchRows = [];
 
@@ -55,6 +110,9 @@ let selectedPersonId = null;
 let lastPersonDetail = null;
 const SELECTED_PERSON_STORAGE_KEY = "ucheongim_selectedPersonId_v1";
 let treeGenFilter = null; // { min:number, max:number } | null
+
+// 가계도 표시 모드(특정 세대 구간 전용 레이아웃 등)
+let treeViewMode = "default"; // "default" | "genrange"
 
 function loadSelectedPersonIdFromStorage() {
   try {
@@ -78,6 +136,11 @@ function saveSelectedPersonIdToStorage(id) {
 let peopleByIdCache = new Map();
 /** person API 캐시 */
 const personByIdCache = new Map(); // id -> person object
+const eightKinFatherIdCache = new Map(); // personId -> fatherId (string)
+
+/** 8촌 연결선·점 색상: 본문/포인트 seal 녹색과 통일. 기하·정렬은 docs/8촌_렌더링_불변규칙.md 고정. */
+const EIGHT_KIN_EDGE = "#166534";
+const EIGHT_KIN_EDGE_SOFT = "rgba(22, 101, 52, 0.42)";
 
 /** kinship 결과 캐시 (id1,id2 -> {text,ts}) */
 const kinshipCache = new Map();
@@ -158,6 +221,8 @@ const HERITAGE_SITES = [
 
 let mapInstance = null;
 let mapMarkersLayer = null;
+/** 마지막으로 fitBounds 한 영역(지도 「맞춤」 버튼 복귀용) */
+let lastMapFitBounds = null;
 
 /** 화면에 보일 한글 라벨 */
 const FIELD_LABELS = {
@@ -771,7 +836,25 @@ function eightKinGenRowLabel(k) {
 function kinItemFatherId(it) {
   if (!it || typeof it !== "object") return "";
   return String(
-    pickFirstString(it, [...PARENT_ID_KEYS, "부친문중원ID", "father문중원ID"]) || ""
+    pickFirstString(it, [
+      ...PARENT_ID_KEYS,
+      "부친문중원ID",
+      "부친문중원Id",
+      "부친 문중원ID",
+      "아버지문중원ID",
+      "아버지 문중원ID",
+      "부친ID",
+      "부친id",
+      "부친Id",
+      "부ID",
+      "부id",
+      "부Id",
+      "father문중원ID",
+      "fatherId",
+      "fatherID",
+      "parentId",
+      "parentID",
+    ]) || ""
   ).trim();
 }
 
@@ -803,6 +886,36 @@ function nameFromCachesById(id) {
   return "";
 }
 
+async function hydrateFatherIdsForEightKin(ids, opts = {}) {
+  const uniq = [...new Set(ids.map((x) => String(x || "").trim()).filter(Boolean))];
+  const limit = opts.concurrency ?? 12;
+  let cursor = 0;
+  let done = 0;
+
+  const hintEl = document.getElementById("eight-kin-hint-home");
+  const total = uniq.length;
+  if (hintEl) hintEl.textContent = `부친ID 보강 중… (0/${total})`;
+
+  const work = async () => {
+    while (cursor < uniq.length) {
+      const id = uniq[cursor++];
+      if (eightKinFatherIdCache.has(id)) {
+        done += 1;
+        continue;
+      }
+      const p = await getPersonByIdForAncestorChain(id);
+      const fid = p ? pickFirstString(p, PARENT_ID_KEYS) : "";
+      const out = fid ? String(fid).trim() : "";
+      if (out) eightKinFatherIdCache.set(id, out);
+      done += 1;
+      if (hintEl && (done % 8 === 0 || done === total)) {
+        hintEl.textContent = `부친ID 보강 중… (${done}/${total})`;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, limit) }, () => work()));
+}
+
 function attachEightKinZoomBehavior(svg, gRoot, toolbar) {
   if (typeof d3 === "undefined") return;
   const zoom = d3
@@ -827,7 +940,7 @@ function attachEightKinZoomBehavior(svg, gRoot, toolbar) {
 /**
  * 왼쪽 기준 → 오른쪽 세대 열.
  * 각 열: 부친 ID 오름차순 → 같은 부 아래 자녀는 자신 ID 순.
- * 부–자: 연한 푸른색 실선 (시트 부모 ID 필드 필요).
+ * 부–자·형제 연결: seal 녹색 계열 (docs/8촌_렌더링_불변규칙.md). 시트 부모 ID 필드 필요.
  */
 function mountEightKinHorizontalTreeSvg(box, opts) {
   const {
@@ -837,6 +950,7 @@ function mountEightKinHorizontalTreeSvg(box, opts) {
     anchorGen,
     anchorId,
     anchorRole: anchorRoleOpt,
+    fatherMap,
   } = opts;
   const anchorRole = anchorRoleOpt || "";
 
@@ -844,7 +958,10 @@ function mountEightKinHorizontalTreeSvg(box, opts) {
   const COL_W = 108;
   const PAD_L = 32;
   const PAD_T = 36;
-  const ROW_H = 22;
+  // 기본 세로 간격(가독성). 실제 배치는 "자녀 수"에 따라 유동적으로 더 벌어진다.
+  const ROW_H = 30;
+  const MIN_DY = 20; // 같은 열에서 이름끼리 최소 간격(겹침 방지)
+  const GROUP_GAP = 18; // 부친 그룹(가족) 사이 간격
   const FONT_MAIN = 12.5;
   const FONT_CAP = 10;
 
@@ -852,7 +969,7 @@ function mountEightKinHorizontalTreeSvg(box, opts) {
   toolbar.className =
     "mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-stone-200/80 pb-2";
   toolbar.innerHTML = `
-    <span class="text-[11px] text-stone-500">세대별 정렬: 부친 ID 순 → 자녀 ID 순 · 부–자 연한 푸른 실선 · 드래그·휠 확대</span>
+    <span class="text-[11px] text-stone-500">세대별 정렬: 부친 ID 순 → 자녀 ID 순 · 부–자·형제 연결 녹색(seal) · 드래그·휠 확대</span>
     <span class="flex gap-1">
       <button type="button" class="eight-kin-z rounded border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="in" title="확대">＋</button>
       <button type="button" class="eight-kin-z rounded border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="out" title="축소">－</button>
@@ -924,12 +1041,14 @@ function mountEightKinHorizontalTreeSvg(box, opts) {
       col = Math.max(1, Number(g) % 32);
     }
     if (byId.has(id)) return;
+    const fatherFromMap =
+      fatherMap && fatherMap instanceof Map ? String(fatherMap.get(id) || "").trim() : "";
     byId.set(id, {
       id,
       name,
       gen: g != null ? Number(g) : null,
       col,
-      fatherId: kinItemFatherId(it),
+      fatherId: fatherFromMap || kinItemFatherId(it),
       x: 0,
       y: 0,
       w: 0,
@@ -963,8 +1082,9 @@ function mountEightKinHorizontalTreeSvg(box, opts) {
         h: ROW_H,
       });
     });
+    return toAdd.length;
   };
-  ensureFatherStubs();
+  const stubAdded = ensureFatherStubs();
 
   if (!byId.size) {
     box.innerHTML =
@@ -994,21 +1114,132 @@ function mountEightKinHorizontalTreeSvg(box, opts) {
     });
   });
 
-  const maxRows = Math.max(1, ...[...byCol.values()].map((a) => a.length));
-  const totalH = PAD_T * 2 + maxRows * ROW_H + 48;
   const totalW = PAD_L + (maxCol + 1) * COL_W + 40;
-
   const colCenterX = (c) => PAD_L + c * COL_W + COL_W / 2;
 
-  byCol.forEach((arr, c) => {
-    const colH = arr.length * ROW_H;
-    let startY = PAD_T + 28 + (maxRows * ROW_H - colH) / 2;
-    arr.forEach((n, i) => {
+  // 유동 배치:
+  // - 같은 아버지의 자녀는 반드시 붙여서(연속) 배치
+  // - 이름이 겹치지 않도록 최소 간격 보장
+  // - 각 세대(열)의 그룹 순서는 "아버지 세대(이전 열)의 순서"를 우선 반영
+  const layoutCol = (c) => {
+    const arr = byCol.get(c) || [];
+    // 노드 폭 계산은 공통
+    arr.forEach((n) => {
+      n.w = Math.min(180, Math.max(36, n.name.length * FONT_MAIN * 0.52 + 10));
       n.x = colCenterX(c);
-      n.y = startY + i * ROW_H + ROW_H / 2;
-      n.w = Math.min(140, Math.max(36, n.name.length * FONT_MAIN * 0.52 + 10));
     });
-  });
+
+    // 그룹: fatherId가 있으면 그 fatherId로 묶고, 없으면 자신의 id로 1인 그룹
+    const groups = new Map(); // key -> nodes[]
+    arr.forEach((n) => {
+      const key = n.fatherId ? `F:${n.fatherId}` : `S:${n.id}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(n);
+    });
+
+    const fatherY = (fid) => {
+      const p = byId.get(String(fid));
+      return p && Number.isFinite(p.y) ? p.y : Infinity;
+    };
+
+    const orderedKeys = [...groups.keys()].sort((a, b) => {
+      const fa = a.startsWith("F:") ? a.slice(2) : "";
+      const fb = b.startsWith("F:") ? b.slice(2) : "";
+      // 이전 열(아버지 세대)의 y순서가 있으면 그걸 우선 사용
+      if (fa && fb) {
+        const ya = fatherY(fa);
+        const yb = fatherY(fb);
+        if (ya !== Infinity || yb !== Infinity) {
+          if (ya === Infinity) return 1;
+          if (yb === Infinity) return -1;
+          if (ya !== yb) return ya - yb;
+        }
+        return compareClanMemberIds(fa, fb);
+      }
+      if (fa) return -1;
+      if (fb) return 1;
+      return a.localeCompare(b, "en");
+    });
+
+    let y = PAD_T + 34;
+    orderedKeys.forEach((k) => {
+      const nodes = groups.get(k) || [];
+      // 자녀 수가 많으면 더 넓게 (최소 간격 MIN_DY를 보장)
+      const inner = Math.max(ROW_H, Math.max(0, nodes.length - 1) * MIN_DY);
+      const pad = Math.max(10, Math.min(22, nodes.length * 3));
+      const blockH = inner + pad * 2;
+
+      // 블록 안에서 균등 배치
+      const step = nodes.length > 1 ? Math.max(MIN_DY, inner / (nodes.length - 1)) : 0;
+      const y0 = y + pad + (nodes.length === 1 ? 0 : 0);
+      nodes
+        .slice()
+        .sort((a, b) => compareClanMemberIds(a.id, b.id))
+        .forEach((n, i) => {
+          n.y = nodes.length === 1 ? y + pad + inner / 2 : y0 + i * step;
+        });
+
+      y += blockH + GROUP_GAP;
+    });
+
+    return y;
+  };
+
+  let maxY = 0;
+  for (let c = 0; c <= maxCol; c++) {
+    maxY = Math.max(maxY, layoutCol(c));
+  }
+
+  // 2) "가장 인원수가 많은(=세로 span이 가장 큰) 세대"의 가운데 선을 기준으로,
+  // 다른 세대도 위/아래 균형 있게(센터 정렬) 이동
+  const colSpans = [];
+  for (let c = 0; c <= maxCol; c++) {
+    const arr = byCol.get(c) || [];
+    const ys = arr.map((n) => n.y).filter((y) => Number.isFinite(y));
+    if (!ys.length) continue;
+    const minY = Math.min(...ys);
+    const maxYc = Math.max(...ys);
+    colSpans.push({ c, minY, maxY: maxYc, span: maxYc - minY });
+  }
+  if (colSpans.length) {
+    colSpans.sort((a, b) => b.span - a.span);
+    const ref = colSpans[0];
+    const refMid = (ref.minY + ref.maxY) / 2;
+
+    colSpans.forEach((s) => {
+      if (s.c === ref.c) return;
+      const mid = (s.minY + s.maxY) / 2;
+      const delta = refMid - mid;
+      (byCol.get(s.c) || []).forEach((n) => {
+        n.y += delta;
+      });
+    });
+
+    // 화면 밖(위쪽)으로 밀리지 않도록 전체를 아래로 보정
+    let globalMin = Infinity;
+    let globalMax = -Infinity;
+    for (let c = 0; c <= maxCol; c++) {
+      (byCol.get(c) || []).forEach((n) => {
+        if (!Number.isFinite(n.y)) return;
+        globalMin = Math.min(globalMin, n.y);
+        globalMax = Math.max(globalMax, n.y);
+      });
+    }
+    const floorY = PAD_T + 34;
+    if (globalMin < floorY) {
+      const shift = floorY - globalMin;
+      for (let c = 0; c <= maxCol; c++) {
+        (byCol.get(c) || []).forEach((n) => {
+          n.y += shift;
+        });
+      }
+      globalMax += shift;
+      globalMin = floorY;
+    }
+    maxY = Math.max(maxY, globalMax + GROUP_GAP);
+  }
+
+  const totalH = Math.max(220, maxY + PAD_T + 40);
 
   for (let c = 0; c <= maxCol; c++) {
     const cap = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -1031,13 +1262,14 @@ function mountEightKinHorizontalTreeSvg(box, opts) {
 
   byId.forEach((n) => {
     const te = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    te.setAttribute("x", String(n.x));
+    // 이름은 좌측 정렬로 두어 "점-이름" 간격을 일정하게(긴 가로선처럼 보이는 효과 제거)
+    te.setAttribute("x", String(n.x - n.w / 2));
     te.setAttribute("y", String(n.y));
-    te.setAttribute("text-anchor", "middle");
+    te.setAttribute("text-anchor", "start");
     te.setAttribute("dominant-baseline", "middle");
     te.setAttribute("font-size", String(n.id === effectiveAnchorId ? FONT_MAIN + 3 : FONT_MAIN));
     te.setAttribute("font-weight", n.id === effectiveAnchorId ? "700" : "500");
-    te.setAttribute("fill", n.id === effectiveAnchorId ? "#8b2942" : "#1c1917");
+    te.setAttribute("fill", n.id === effectiveAnchorId ? "#166534" : "#1c1917");
     te.setAttribute("font-family", "Noto Sans KR, Pretendard, sans-serif");
     te.textContent = n.name;
     gNode.appendChild(te);
@@ -1068,55 +1300,65 @@ function mountEightKinHorizontalTreeSvg(box, opts) {
     childrenByFather.get(n.fatherId).push(n);
   });
 
-  const stroke = "#7dd3fc";
-
-  const drawPath = (d, width = 1.15, opacity = 0.92) => {
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", d);
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", stroke);
-    path.setAttribute("stroke-width", String(width));
-    path.setAttribute("stroke-linecap", "round");
-    path.setAttribute("stroke-linejoin", "round");
-    path.setAttribute("opacity", String(opacity));
-    gEdge.appendChild(path);
-  };
-
   // 같은 아버지의 자녀가 여럿이면: 버스(괄호 느낌)로 묶어 연결
   childrenByFather.forEach((kids, fid) => {
     const p = byId.get(fid);
     if (!p || !kids.length) return;
     kids.sort((a, b) => compareClanMemberIds(a.id, b.id));
 
-    if (kids.length === 1) {
-      const ch = kids[0];
-      const x1 = p.x + p.w / 2 + 6;
-      const y1 = p.y;
-      const x2 = ch.x - ch.w / 2 - 6;
-      const y2 = ch.y;
-      const mx = (x1 + x2) / 2;
-      const d = `M${x1},${y1} L${mx},${y1} L${mx},${y2} L${x2},${y2}`;
-      drawPath(d, 1.15, 0.92);
-      return;
-    }
-
-    // 버스 x 위치(부친과 자녀 중간)
     const minY = Math.min(...kids.map((k) => k.y));
     const maxY = Math.max(...kids.map((k) => k.y));
-    const xFrom = p.x + p.w / 2 + 6;
-    const xTo = Math.min(...kids.map((k) => k.x - k.w / 2 - 6));
-    const xBus = xFrom + Math.max(14, Math.min(42, (xTo - xFrom) * 0.55));
     const yMid = (minY + maxY) / 2;
 
-    // 부친 → 버스(살짝 곡선)
-    drawPath(`M${xFrom},${p.y} Q${xBus - 6},${p.y} ${xBus},${yMid}`, 1.2, 0.92);
-    // 버스 세로줄
-    drawPath(`M${xBus},${minY} L${xBus},${maxY}`, 1.2, 0.72);
-    // 버스 → 각 자녀
+    // "점(•)"은 한 x축에 정렬하고, 그 점들을 괄호 곡선으로 묶는다.
+    // 점→이름 사이 선은 그리지 않아(가로선 제거) 공간을 넓게 쓴다.
+    const xTextLeftMin = Math.min(...kids.map((k) => k.x - k.w / 2));
+    const xDot = xTextLeftMin - 12;
+    const padY = 10;
+    const yTop = minY - padY;
+    const yBot = maxY + padY;
+    const bulge = 16;
+
+    // 부친 → (자녀 점/괄호) 연결(부드러운 곡선)
+    const xFrom = p.x + p.w / 2 + 6;
+    const bend = Math.max(22, Math.min(72, (xDot - xFrom) * 0.55));
+    const pathMain = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    pathMain.setAttribute(
+      "d",
+      `M${xFrom},${p.y} C${xFrom + bend},${p.y} ${xDot - bend},${yMid} ${xDot},${yMid}`
+    );
+    pathMain.setAttribute("fill", "none");
+    pathMain.setAttribute("stroke", EIGHT_KIN_EDGE);
+    pathMain.setAttribute("stroke-width", "1.1");
+    pathMain.setAttribute("stroke-linecap", "round");
+    pathMain.setAttribute("stroke-linejoin", "round");
+    pathMain.setAttribute("opacity", "0.92");
+    gEdge.appendChild(pathMain);
+
+    // 점(•)들
     kids.forEach((ch) => {
-      const x2 = ch.x - ch.w / 2 - 6;
-      drawPath(`M${xBus},${ch.y} L${x2},${ch.y}`, 1.15, 0.92);
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", String(xDot));
+      dot.setAttribute("cy", String(ch.y));
+      dot.setAttribute("r", "1.8");
+      dot.setAttribute("fill", EIGHT_KIN_EDGE);
+      dot.setAttribute("opacity", "0.95");
+      gEdge.appendChild(dot);
     });
+
+    // 같은 자녀들의 점(•)을 수직선으로 연결(요청)
+    if (kids.length >= 2) {
+      const vline = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      vline.setAttribute("d", `M${xDot},${minY} L${xDot},${maxY}`);
+      vline.setAttribute("fill", "none");
+      vline.setAttribute("stroke", EIGHT_KIN_EDGE_SOFT);
+      vline.setAttribute("stroke-width", "0.85");
+      vline.setAttribute("stroke-linecap", "round");
+      vline.setAttribute("opacity", "0.45");
+      gEdge.appendChild(vline);
+    }
+
+    // 점 앞 괄호(세로로 길게 보이는 선)는 제거(A)
   });
 
   svg.setAttribute("viewBox", `0 0 ${totalW} ${totalH}`);
@@ -1179,7 +1421,7 @@ function mountEightKinTreeSvg(box, layers, opts = {}) {
       t.setAttribute("font-family", "Noto Sans KR, Pretendard, sans-serif");
       t.setAttribute("font-size", String(fs));
       t.setAttribute("font-weight", "700");
-      t.setAttribute("fill", "#8b2942");
+      t.setAttribute("fill", "#166534");
       t.textContent = layer.text;
       gNode.appendChild(t);
       if (layer.sub != null) {
@@ -1265,7 +1507,7 @@ function mountEightKinTreeSvg(box, layers, opts = {}) {
     ln.setAttribute("y1", String(A.yBottom));
     ln.setAttribute("x2", String(B.cx));
     ln.setAttribute("y2", String(B.yTop));
-    ln.setAttribute("stroke", "#d6d3d1");
+    ln.setAttribute("stroke", EIGHT_KIN_EDGE_SOFT);
     ln.setAttribute("stroke-width", "1.25");
     ln.setAttribute("stroke-linecap", "round");
     gEdge.appendChild(ln);
@@ -1291,7 +1533,8 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
   const sesong = formatSesongLine(mergedRow);
   const father = pickFirstString(mergedRow, PARENT_NAME_KEYS) || "";
   const fatherId = pickFirstString(mergedRow, PARENT_ID_KEYS) || "";
-  const mother =
+  // 모친: "그 인물의 부(아버지의ID)의 배우자"를 뜻함(요청)
+  const fallbackMother =
     pickFirstString(mergedRow, [
       "어머니 성함",
       "어머니이름",
@@ -1301,7 +1544,8 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
       "motherName",
       "mother",
       "Mother",
-    ]) || "기록 없음";
+    ]) || "";
+  const mother = fatherId ? "불러오는 중…" : fallbackMother || "기록 없음";
 
   const spouse =
     pickFirstString(mergedRow, ["배우자", "spouse", "spouseName", "配偶者"]) ||
@@ -1408,7 +1652,7 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
           </div>
           <div class="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center rounded-xl border border-stone-200 bg-stone-50/90 px-2 py-2 text-center">
             <span class="text-[10px] font-medium uppercase tracking-wide text-stone-500">모친</span>
-            <span class="mt-0.5 break-words text-xs font-semibold text-ink-900">${escapeHtml(mother)}</span>
+            <span id="selected-person-mother-val" class="mt-0.5 break-words text-xs font-semibold text-ink-900">${escapeHtml(mother)}</span>
           </div>
         </div>
         <div class="flex h-4 flex-col items-center justify-start" aria-hidden="true">
@@ -1421,6 +1665,26 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
       ${childrenBlock}
     </div>
   `;
+
+  // 부친ID가 있으면: 부친 상세(action=person)에서 배우자(배우자/配偶者 등)를 가져와 모친으로 표시
+  if (fatherId) {
+    (async () => {
+      const target = document.getElementById("selected-person-mother-val");
+      if (!target) return;
+      try {
+        const pj = await apiGetSilent({ action: "person", id: fatherId });
+        const p = normalizePersonPayload(pj) || pj;
+        const sp =
+          pickFirstString(p, ["배우자", "spouse", "spouseName", "配偶者"]) ||
+          pickFirstString(p, ["배우자명", "배우자이름", "spouse_name"]) ||
+          "";
+        const disp = sp ? String(sp).trim() : fallbackMother || "기록 없음";
+        target.textContent = disp;
+      } catch {
+        target.textContent = fallbackMother || "기록 없음";
+      }
+    })();
+  }
 }
 
 function renderEightKinListHome(list) {
@@ -1546,76 +1810,107 @@ async function renderEightKinBox(eightJson, paternalChainOpt) {
     ).trim();
     if (!id || id.startsWith("idx_")) return;
     const fid = kinItemFatherId(it);
-    if (fid) idToFather.set(id, fid);
+    if (fid) {
+      const fs = String(fid).trim();
+      idToFather.set(id, fs);
+      eightKinFatherIdCache.set(id, fs);
+    }
   });
 
-  let excludedCollateral = 0;
-  const canApplyDirectFilter = (() => {
-    // fatherId 체인이 거의 없거나, anchorId로 올라가는 케이스가 하나도 없으면
-    // (즉 데이터 스키마/값이 안 맞는 상태) 아침처럼 목록을 그대로 보여주고 선만 연결한다.
-    if (!anchorId) return false;
-    if (idToFather.size < 4) return false;
-    // 하나라도 anchorId로 도달하는 케이스가 있어야 필터 적용
-    let okCount = 0;
-    for (const id of idToFather.keys()) {
-      let cur = String(id);
-      const seen = new Set();
-      while (cur && !seen.has(cur)) {
-        seen.add(cur);
-        const f = idToFather.get(cur);
-        if (!f) break;
-        if (String(f) === String(anchorId)) {
-          okCount += 1;
-          break;
-        }
-        cur = String(f);
-      }
-      if (okCount >= 2) break;
-    }
-    return okCount >= 1;
-  })();
+  // 부친ID가 하나도 없으면: person API로 부친ID를 먼저 보강해야 선/직계필터가 가능함
+  if (idToFather.size === 0) {
+    const ids = baseFiltered.map((it, idx) =>
+      String(
+        pickFirstString(it, [
+          "문중원ID",
+          "문중원id",
+          "clanMemberId",
+          "memberId",
+          "personId",
+          "ID",
+          "id",
+        ]) || getClanMemberId(it, idx)
+      ).trim()
+    );
+    await hydrateFatherIdsForEightKin(ids, { concurrency: 12 });
+    ids.forEach((id) => {
+      const fid = eightKinFatherIdCache.get(String(id));
+      if (fid) idToFather.set(String(id), String(fid));
+    });
+  }
 
-  const isDirectDescendant = (id) => {
-    if (!canApplyDirectFilter) return true;
-    let cur = String(id);
+  // 직계(고조부) 후손만을 "반드시" 정리: 부족한 fatherId는 person API로 보강해서 체인을 확정한다.
+  const resolveFatherId = async (id) => {
+    const key = String(id || "").trim();
+    if (!key) return "";
+    if (idToFather.has(key)) return idToFather.get(key);
+    if (eightKinFatherIdCache.has(key)) return eightKinFatherIdCache.get(key);
+    const p = await getPersonByIdForAncestorChain(key);
+    const fid = p ? pickFirstString(p, PARENT_ID_KEYS) : "";
+    const out = fid ? String(fid).trim() : "";
+    if (out) {
+      idToFather.set(key, out);
+      eightKinFatherIdCache.set(key, out);
+    }
+    return out;
+  };
+
+  const reachesAnchor = async (id) => {
+    if (!anchorId) return false;
+    let cur = String(id || "").trim();
     const seen = new Set();
-    while (cur && !seen.has(cur)) {
+    let steps = 0;
+    while (cur && !seen.has(cur) && steps < 12) {
       seen.add(cur);
-      const f = idToFather.get(cur);
+      const f = await resolveFatherId(cur);
       if (!f) return false;
       if (String(f) === String(anchorId)) return true;
       cur = String(f);
+      steps += 1;
     }
     return false;
   };
 
-  const filtered = baseFiltered.filter((it, idx) => {
-    const id = String(
-      pickFirstString(it, [
-        "문중원ID",
-        "문중원id",
-        "clanMemberId",
-        "memberId",
-        "personId",
-        "ID",
-        "id",
-      ]) || getClanMemberId(it, idx)
-    ).trim();
-    if (!id || id.startsWith("idx_")) return true; // id 없는 행은 그냥 남김(표시 단계에서 걸러질 수 있음)
-    const ok = isDirectDescendant(id);
-    if (!ok) excludedCollateral += 1;
-    return ok;
-  });
+  let excludedCollateral = 0;
+  const filtered = [];
+  // 병렬 제한(너무 많은 API 호출 방지)
+  const limit = 8;
+  let cursor = 0;
+  const runWorker = async () => {
+    while (cursor < baseFiltered.length) {
+      const idx = cursor++;
+      const it = baseFiltered[idx];
+      const id = String(
+        pickFirstString(it, [
+          "문중원ID",
+          "문중원id",
+          "clanMemberId",
+          "memberId",
+          "personId",
+          "ID",
+          "id",
+        ]) || getClanMemberId(it, idx)
+      ).trim();
+      if (!id || id.startsWith("idx_")) {
+        excludedCollateral += 1;
+        continue;
+      }
+      try {
+        const ok = await reachesAnchor(id);
+        if (ok) filtered.push(it);
+        else excludedCollateral += 1;
+      } catch {
+        excludedCollateral += 1;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: limit }, () => runWorker()));
 
   if (hintEl) {
     const parts = [];
     if (anchorInfo) parts.push(`기준: ${anchorName} (${anchorInfo.role})`);
     if (excludedAbove > 0) parts.push(`윗세대 제외 ${excludedAbove}명`);
-    if (canApplyDirectFilter) {
-      if (excludedCollateral > 0) parts.push(`방계 제외 ${excludedCollateral}명`);
-    } else {
-      parts.push("부친ID 부족으로 방계 제외를 확정할 수 없음(가능한 선만 연결)");
-    }
+    if (excludedCollateral > 0) parts.push(`방계 제외 ${excludedCollateral}명`);
     if (parts.length) hintEl.textContent = parts.join(" · ");
   }
 
@@ -1653,6 +1948,7 @@ async function renderEightKinBox(eightJson, paternalChainOpt) {
     anchorGen,
     anchorId,
     anchorRole: anchorInfo?.role || "",
+    fatherMap: idToFather,
   });
 }
 
@@ -1749,6 +2045,11 @@ function renderEightKinTree(eightJson) {
   const svgEl = document.getElementById("eight-kin-svg");
   const wrap = document.getElementById("eight-kin-svg-wrap");
   if (!svgEl || !wrap || typeof d3 === "undefined") return;
+  try {
+    delete svgEl.__treeZoom;
+  } catch {
+    // ignore
+  }
   const svg = d3.select(svgEl);
   svg.on(".zoom", null);
   svg.selectAll("*").remove();
@@ -1803,7 +2104,7 @@ function renderEightKinTree(eightJson) {
 
   const link = gRoot
     .append("g")
-    .attr("stroke", "#d6d3d1")
+    .attr("stroke", EIGHT_KIN_EDGE_SOFT)
     .attr("stroke-width", 1.5)
     .selectAll("line")
     .data(g.links)
@@ -1836,8 +2137,8 @@ function renderEightKinTree(eightJson) {
   node
     .append("circle")
     .attr("r", 16)
-    .attr("fill", (d) => (String(d.id) === String(selectedPersonId) ? "#8b2942" : "#fff"))
-    .attr("stroke", (d) => (String(d.id) === String(selectedPersonId) ? "#8b2942" : "#e7e5e4"))
+    .attr("fill", (d) => (String(d.id) === String(selectedPersonId) ? "#166534" : "#fff"))
+    .attr("stroke", (d) => (String(d.id) === String(selectedPersonId) ? "#166534" : "#e7e5e4"))
     .attr("stroke-width", 2);
 
   node
@@ -1869,6 +2170,8 @@ function renderEightKinTree(eightJson) {
       .attr("y2", (d) => d.target.y);
     node.attr("transform", (d) => `translate(${d.x},${d.y})`);
   });
+
+  attachTreeZoomState(svgEl, zoom, d3.zoomIdentity);
 }
 
 /**
@@ -1922,10 +2225,10 @@ async function selectPerson(clanMemberId) {
 
   const eightList = normalizeEightKinList(eightJson);
   renderEightKinListHome(eightList);
-  // 8촌 트리(관계도) 실제 렌더
+  // 고조부 앵커 체인(8대) 조회와 D3 관계도 렌더를 겹쳐 실행해 체감 대기 단축
+  const anchorChainP = buildFatherChainFromId(clanMemberId, 8);
   renderEightKinTree(eightJson);
-  // 8촌은 고조부(최대 4대 위)까지만 필요 → 짧게 조회해 빠르게 표시
-  const anchorChain = await buildFatherChainFromId(clanMemberId, 8);
+  const anchorChain = await anchorChainP;
   await renderEightKinBox(eightJson, anchorChain);
   // 직계 조상(시조까지)은 별도(백그라운드)로 길게 가져와 UI 블로킹 최소화
   void (async () => {
@@ -2044,6 +2347,23 @@ async function apiGetSilent(params, opts = {}) {
   return null;
 }
 
+/** running 응답을 기다리며 재시도(아천문중 콘텐츠용) */
+async function apiGetWait(params, ui = {}) {
+  const maxAttempts = ui.maxAttempts ?? 10;
+  const retryDelayMs = ui.retryDelayMs ?? 1200;
+  const onRetry = ui.onRetry ?? null;
+  return apiGet(params, {
+    maxAttempts,
+    retryDelayMs,
+    onRetry: onRetry
+      ? onRetry
+      : (n, max) => {
+          const el = ui.hintEl;
+          if (el) el.textContent = `서버 준비 중… (${n}/${max})`;
+        },
+  });
+}
+
 async function fetchSebo(name) {
   return apiGet(
     { action: "search", name: name.trim() },
@@ -2105,17 +2425,50 @@ function renderClanNotices(data) {
   list.innerHTML = "";
   if (!items.length) {
     list.innerHTML =
-      '<li class="text-sm text-stone-500">등록된 공지가 없습니다.</li>';
+      '<li class="more-bento-empty text-sm">등록된 공지가 없습니다.</li>';
     return;
   }
+
+  const pickAnyField = (obj, excludeKeys = new Set()) => {
+    if (!obj || typeof obj !== "object") return "";
+    for (const [k, v] of Object.entries(obj)) {
+      if (excludeKeys.has(k)) continue;
+      const s = String(v ?? "").trim();
+      if (s) return s;
+    }
+    return "";
+  };
+
   items.slice(0, 10).forEach((n) => {
     const li = document.createElement("li");
-    li.className =
-      "rounded-xl border border-stone-100 bg-stone-50/80 px-3 py-2.5 text-left";
-    const title = String(n.title ?? n.subject ?? n.heading ?? "제목 없음");
-    const date = String(n.date ?? n.writtenAt ?? n.createdAt ?? "");
-    const sum = String(n.summary ?? n.content ?? n.body ?? "").slice(0, 160);
-    const author = String(n.author ?? n.writer ?? "");
+    li.className = "more-bento-notice-item text-left";
+    const title =
+      String(
+        n.title ??
+          n.subject ??
+          n.heading ??
+          n.제목 ??
+          n["공지 제목"] ??
+          n["제목(제목)"] ??
+          ""
+      ).trim() || pickAnyField(n, new Set(["date", "작성일", "등록일", "일자"])) || "제목 없음";
+    const date = String(
+      n.date ??
+        n.writtenAt ??
+        n.createdAt ??
+        n.날자 ??
+        n.작성일 ??
+        n.등록일 ??
+        n.일자 ??
+        n.날짜 ??
+        ""
+    ).trim();
+    const sum = String(
+      n.summary ?? n.content ?? n.body ?? n.내용 ?? n.본문 ?? n.memo ?? ""
+    )
+      .trim()
+      .slice(0, 160);
+    const author = String(n.author ?? n.writer ?? n.작성자 ?? n.담당 ?? "").trim();
     li.innerHTML = `
       <div class="font-medium text-ink-900">${escapeHtml(title)}</div>
       <div class="mt-0.5 text-xs text-stone-500">${escapeHtml(date)}${author ? ` · ${escapeHtml(author)}` : ""}</div>
@@ -2127,14 +2480,15 @@ function renderClanNotices(data) {
 
 /** 아천문중 탭: 공지 + 역사 + 투표 */
 async function loadClanTab() {
-  const [noticeJson, histJson, voteJson] = await Promise.all([
-    apiGetSilent({ action: "notices", limit: "10" }),
-    apiGetSilent({ action: "history", limit: "20" }),
-    apiGetSilent({ action: "vote" }),
-  ]);
-  renderClanNotices(noticeJson);
-  renderMoreHistory(histJson);
-  renderVoteSection(voteJson);
+  // 정관(로컬 md) + 재산(property 시트) + 공지(notice 시트) + 투표응답(voteRespone 시트)
+  await Promise.all([loadCharterMarkdown(), loadPropertySheet(), loadNoticesSheet(), loadVoteResponseSheet()]);
+  // 연혁은 기존 history를 유지(있으면 표시)
+  try {
+    const histJson = await apiGetSilent({ action: "history", limit: "20" });
+    renderMoreHistory(histJson);
+  } catch {
+    // ignore
+  }
 }
 
 function renderHomeNotices(data) {
@@ -2166,8 +2520,21 @@ function renderHomeNotices(data) {
 }
 
 async function loadHomeNotices() {
-  const noticeJson = await apiGetSilent({ action: "notices", limit: "3" });
-  renderHomeNotices(noticeJson);
+  // 시트명: notice (권장 action=notice). 기존 호환: notices
+  let json = null;
+  try {
+    json = await apiGetSilent({ action: "notice", limit: "3" });
+  } catch {
+    // ignore
+  }
+  if (!json) {
+    try {
+      json = await apiGetSilent({ action: "notices", limit: "3" });
+    } catch {
+      json = null;
+    }
+  }
+  if (json) renderHomeNotices(json);
 }
 
 async function apiPostForm(params) {
@@ -2217,7 +2584,7 @@ function renderVoteSection(data) {
         "API action=vote 로 안건·선택지·득표수 배열을 주면 표시됩니다. 제출은 action=voteSubmit 입니다.";
     }
     body.innerHTML =
-      '<p class="text-sm text-stone-500">진행 중인 투표가 없습니다.</p>';
+      '<p class="text-sm more-bento-empty">진행 중인 투표가 없습니다.</p>';
     return;
   }
 
@@ -2225,7 +2592,7 @@ function renderVoteSection(data) {
   if (hint) hint.textContent = "이름 입력 후 항목별 투표를 누르세요.";
   body.innerHTML = "";
   const h4 = document.createElement("h4");
-  h4.className = "font-semibold text-ink-900";
+  h4.className = "more-bento-h4 font-semibold text-[#1a2e2e]";
   h4.textContent = normalized.title;
   body.appendChild(h4);
 
@@ -2233,7 +2600,7 @@ function renderVoteSection(data) {
     const count = Number(normalized.votes[i] ?? 0) || 0;
     const row = document.createElement("div");
     row.className =
-      "flex flex-wrap items-center gap-2 rounded-xl border border-stone-100 bg-stone-50/80 px-3 py-2";
+      "more-bento-vote-row flex flex-wrap items-center gap-2 border border-[#1a2e2e]/22 bg-[#faf8f3] px-3 py-2";
     const label = document.createElement("span");
     label.className = "min-w-0 flex-1 text-sm text-ink-800";
     label.textContent = String(opt);
@@ -2243,7 +2610,7 @@ function renderVoteSection(data) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className =
-      "rounded-lg bg-seal px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#732238]";
+      "rounded-lg bg-seal px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#14532d]";
     btn.textContent = "투표";
     btn.addEventListener("click", () => void submitVoteOption(i));
     row.appendChild(label);
@@ -2304,14 +2671,15 @@ function renderMoreHistory(data) {
   }
   if (!items.length) {
     body.innerHTML =
-      '<p class="text-sm text-stone-500">등록된 자료 목록이 없습니다.</p>';
+      '<p class="text-sm more-bento-empty">등록된 자료 목록이 없습니다.</p>';
     return;
   }
   items.slice(0, 20).forEach((h) => {
     const year = String(h.year ?? h.연도 ?? "");
     const title = String(h.title ?? h.제목 ?? h.headline ?? "");
     const p = document.createElement("p");
-    p.className = "border-b border-stone-100 pb-2 text-sm last:border-0";
+    p.className =
+      "more-bento-history-line border-b border-[#1a2e2e]/12 pb-2 text-sm last:border-0";
     p.innerHTML = `<span class="font-semibold text-seal">${escapeHtml(year)}</span> ${escapeHtml(title)}`;
     body.appendChild(p);
   });
@@ -2332,7 +2700,21 @@ function applyMapMarkers(points) {
     bounds.push([s.lat, s.lng]);
   });
   if (bounds.length) {
-    mapInstance.fitBounds(bounds, { padding: [28, 28], maxZoom: 12 });
+    const b = L.latLngBounds(bounds);
+    lastMapFitBounds = b;
+    mapInstance.fitBounds(b, { padding: [28, 28], maxZoom: 12 });
+  } else {
+    lastMapFitBounds = null;
+  }
+}
+
+function fitMapToMarkersOrDefault() {
+  if (!mapInstance || typeof L === "undefined") return;
+  requestAnimationFrame(() => mapInstance.invalidateSize(true));
+  if (lastMapFitBounds && lastMapFitBounds.isValid && lastMapFitBounds.isValid()) {
+    mapInstance.fitBounds(lastMapFitBounds, { padding: [28, 28], maxZoom: 12 });
+  } else {
+    mapInstance.setView([36.36, 128.68], 10);
   }
 }
 
@@ -2424,13 +2806,7 @@ function showView(viewId) {
 
   if (viewId === "view-tree") {
     requestAnimationFrame(() => {
-      const sel = document.getElementById("tree-person-select");
-      const v = sel?.value;
-      if (v) void drawFamilyTree(v);
-      else if (lastSearchRows.length) {
-        const first = annotatePeople(lastSearchRows)[0];
-        if (first) void drawFamilyTree(first.id);
-      }
+      void updateTreeView();
     });
   }
 }
@@ -2456,7 +2832,8 @@ function initHeaderTabs() {
     const gen = btn.getAttribute("data-tree-gen");
     if (gen) {
       // 가계도 세대 필터
-      if (gen === "9-11") setTreeGenFilter(9, 11);
+      if (gen === "1-10") setTreeGenFilter(1, 10);
+      else if (gen === "9-11") setTreeGenFilter(9, 11); // (구버전 호환)
       else if (gen === "11-20") setTreeGenFilter(11, 20);
       else if (gen === "21-31") setTreeGenFilter(21, 31);
       else if (gen === "32+") setTreeGenFilter(32, 999);
@@ -2470,6 +2847,339 @@ function initHeaderTabs() {
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
+}
+
+/** 아천문중 벤토 페이지: 맨 위로 */
+function initMorePageChrome() {
+  document.getElementById("more-back-top")?.addEventListener("click", () => {
+    document
+      .querySelector("#view-more .more-bento-hero")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+/** 가계도·8촌 관계도 SVG: ＋/－/맞춤 (초기 맞춤은 attachTreeZoomState 참조) */
+function initTreeZoomHosts() {
+  document.querySelectorAll(".tree-zoom-host").forEach((host) => {
+    host.addEventListener("click", (e) => {
+      const btn = e.target.closest(".tree-z");
+      if (!btn) return;
+      const act = btn.getAttribute("data-act");
+      const svgEl = host.querySelector("svg");
+      const st = svgEl?.__treeZoom;
+      if (!st?.zoom || st.initial == null) return;
+      const { zoom, initial, sel } = st;
+      if (act === "in") sel.transition().duration(180).call(zoom.scaleBy, 1.28);
+      else if (act === "out") sel.transition().duration(180).call(zoom.scaleBy, 1 / 1.28);
+      else if (act === "reset") sel.transition().duration(220).call(zoom.transform, initial);
+    });
+  });
+}
+
+function initMapFitButton() {
+  document.getElementById("map-fit-btn")?.addEventListener("click", () => {
+    fitMapToMarkersOrDefault();
+  });
+}
+
+/* ---------- 아천문중(정관/재산/공지/투표응답): 요약 + 펼쳐보기 ---------- */
+
+function setMoreCollapsed(key, collapsed) {
+  const body = document.querySelector(`[data-more-body="${key}"]`);
+  const btn = document.querySelector(`[data-more-toggle="${key}"]`);
+  if (!body || !btn) return;
+  body.classList.toggle("is-collapsed", !!collapsed);
+  const isCollapsed = !!collapsed;
+  btn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+}
+
+function initMoreExpanders() {
+  document.getElementById("view-more")?.addEventListener("click", (e) => {
+    const btn = e.target?.closest?.(".more-expand-btn");
+    if (!btn) return;
+    const key = btn.getAttribute("data-more-toggle");
+    if (!key) return;
+    const body = document.querySelector(`[data-more-body="${key}"]`);
+    const isCollapsed = body?.classList?.contains("is-collapsed");
+    setMoreCollapsed(key, !isCollapsed);
+  });
+}
+
+function renderMarkdownInto(el, md) {
+  if (!el) return;
+  const src = String(md || "").trim();
+  if (!src) {
+    el.innerHTML = `<p class="more-bento-empty text-sm">표시할 내용이 없습니다.</p>`;
+    return;
+  }
+  // marked가 있으면 markdown → html, 없으면 <pre>로 표시
+  if (typeof marked !== "undefined" && marked?.parse) {
+    try {
+      el.innerHTML = marked.parse(src);
+      return;
+    } catch {
+      // ignore
+    }
+  }
+  el.innerHTML = `<pre class="whitespace-pre-wrap text-[12px] leading-relaxed">${escapeHtml(src)}</pre>`;
+}
+
+function isFileProtocol() {
+  try {
+    return String(location?.protocol || "") === "file:";
+  } catch {
+    return false;
+  }
+}
+
+async function loadCharterMarkdown() {
+  const hint = document.getElementById("more-charter-hint");
+  const body = document.getElementById("more-charter-body");
+  if (!body) return;
+  if (hint) hint.textContent = "로컬 문서(docs/아천문중_정관.md)";
+  if (isFileProtocol()) {
+    body.innerHTML =
+      `<p class="more-bento-empty text-sm">현재 <code class="text-xs">file://</code>로 열려 있어 문서를 불러올 수 없습니다. ` +
+      `정적 서버(예: <code class="text-xs">http://localhost:3000</code>)로 열어 주세요.</p>`;
+    return;
+  }
+  try {
+    const url = new URL("docs/아천문중_정관.md", location.href);
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    const md = await res.text();
+    renderMarkdownInto(body, md);
+    setMoreCollapsed("more-charter", true);
+  } catch (err) {
+    console.warn(err);
+    if (hint) hint.textContent = `로컬 문서(docs/아천문중_정관.md) · 로드 실패`;
+    body.innerHTML = `<p class="more-bento-empty text-sm">정관 문서를 불러오지 못했습니다.</p>`;
+  }
+}
+
+function normalizePropertyPayload(json) {
+  if (!json || typeof json !== "object") return [];
+  if (json.status === "error") return [];
+  const items = normalizeList(json, ["property", "properties", "data", "items", "list", "rows"]);
+  return Array.isArray(items) ? items : [];
+}
+
+function propertyItemsToMarkdown(items) {
+  if (!items || !items.length) return "";
+  const lines = ["## 문중재산", ""];
+
+  const nonEmptyPairs = (obj) => {
+    if (!obj || typeof obj !== "object") return [];
+    return Object.entries(obj)
+      .map(([k, v]) => [String(k || "").trim(), String(v ?? "").trim()])
+      .filter(([k, v]) => k && v);
+  };
+
+  const isColShape =
+    items.length &&
+    items[0] &&
+    typeof items[0] === "object" &&
+    ("col1" in items[0] || "col2" in items[0] || "col3" in items[0] || "col4" in items[0]);
+
+  // property 시트 헤더가 비어있으면 col1~로 내려옴 → 고정 포맷으로 예쁘게 표시
+  if (isColShape) {
+    items.slice(0, 200).forEach((it, i) => {
+      const loc = String(it.col1 ?? "").trim(); // 소재지(예: 적서동 727)
+      const kind = String(it.col2 ?? "").trim(); // 지목(예: 전/답)
+      const area = String(it.col3 ?? "").trim(); // 면적
+      const owner = String(it.col4 ?? "").trim(); // 명의/비고
+      const head = loc || `항목 ${i + 1}`;
+      const meta = [kind ? `지목 ${kind}` : "", area ? `면적 ${area}` : ""].filter(Boolean).join(" · ");
+      const sum = [meta, owner].filter(Boolean).join(" / ");
+      lines.push(`- **${head}**${sum ? `: ${sum}` : ""}`);
+    });
+    lines.push("");
+    return lines.join("\n");
+  }
+
+  items.slice(0, 200).forEach((it, i) => {
+    const title = String(
+      it.title ??
+        it.name ??
+        it.항목 ??
+        it.명칭 ??
+        it["재산명"] ??
+        it["재산"] ??
+        it["소재지"] ??
+        ""
+    ).trim();
+    const date = String(it.date ?? it.일자 ?? it.등록일 ?? it.취득일 ?? "").trim();
+    const body = String(it.body ?? it.desc ?? it.내용 ?? it.memo ?? it.비고 ?? "").trim();
+
+    // 컬럼명이 제각각인 경우: 첫 번째 유효 필드를 제목으로 사용
+    const pairs = nonEmptyPairs(it);
+    const fallbackTitle = title || (pairs[0] ? pairs[0][1] : "");
+    const head =
+      fallbackTitle || date
+        ? `${fallbackTitle || "항목"}${date ? ` (${date})` : ""}`
+        : `항목 ${i + 1}`;
+
+    // 요약: body가 없으면 나머지 필드 2~3개를 붙여준다
+    let summary = body;
+    if (!summary) {
+      const rest = pairs
+        .slice(1, 4)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" · ");
+      summary = rest;
+    }
+
+    lines.push(`- **${head}**${summary ? `: ${summary}` : ""}`);
+  });
+  lines.push("");
+  return lines.join("\n");
+}
+
+async function loadPropertySheet() {
+  const hint = document.getElementById("more-property-hint");
+  const body = document.getElementById("more-property-body");
+  if (!body) return;
+  if (hint) hint.textContent = "API action=property (시트: property)";
+  body.innerHTML = `<p class="text-sm text-stone-500">불러오는 중…</p>`;
+  if (isFileProtocol()) {
+    body.innerHTML =
+      `<p class="more-bento-empty text-sm">현재 <code class="text-xs">file://</code>로 열려 있어 API 호출이 차단될 수 있습니다. ` +
+      `정적 서버로 열어 주세요.</p>`;
+    return;
+  }
+  try {
+    const json = await apiGetWait(
+      { action: "property", limit: "200" },
+      { hintEl: hint, maxAttempts: 10 }
+    );
+    const items = normalizePropertyPayload(json);
+    const md = items.length ? propertyItemsToMarkdown(items) : "";
+    if (md) renderMarkdownInto(body, md);
+    else body.innerHTML = `<p class="more-bento-empty text-sm">등록된 문중재산 자료가 없습니다.</p>`;
+    setMoreCollapsed("more-property", true);
+  } catch (err) {
+    console.warn(err);
+    body.innerHTML =
+      `<p class="more-bento-empty text-sm">property 시트를 불러오지 못했습니다.</p>` +
+      `<p class="mt-2 text-[11px] text-stone-500">서버가 계속 <code class="text-xs">{\"status\":\"running\"}</code>만 반환하면 Apps Script 배포/권한/분기(action=property)와 JSON 반환을 확인해 주세요.</p>`;
+  }
+}
+
+async function loadNoticesSheet() {
+  // 1순위: action=notice, 2순위: action=notices (기존 호환)
+  const hint = document.getElementById("clan-notice-hint");
+  const list = document.getElementById("clan-notice-list");
+  if (!list) return;
+  if (hint) hint.textContent = "API action=notice (시트: notice) · 호환: notices";
+  list.innerHTML = `<li class="more-bento-empty text-sm">불러오는 중…</li>`;
+  if (isFileProtocol()) {
+    list.innerHTML =
+      `<li class="more-bento-empty text-sm">현재 <code class="text-xs">file://</code>로 열려 있어 API 호출이 차단될 수 있습니다. ` +
+      `정적 서버로 열어 주세요.</li>`;
+    setMoreCollapsed("more-notice", true);
+    return;
+  }
+  let json = null;
+  try {
+    json = await apiGetWait(
+      { action: "notice", limit: "30" },
+      { hintEl: hint, maxAttempts: 10 }
+    );
+  } catch {
+    // ignore
+  }
+  if (!json) {
+    try {
+      json = await apiGetWait(
+        { action: "notices", limit: "30" },
+        { hintEl: hint, maxAttempts: 10 }
+      );
+      if (hint) hint.textContent = "API action=notices (호환)";
+    } catch {
+      json = null;
+    }
+  }
+  if (!json) {
+    list.innerHTML =
+      `<li class="more-bento-empty text-sm">공지사항을 불러오지 못했습니다.</li>` +
+      `<li class="mt-2 text-[11px] text-stone-500">서버가 계속 <code class="text-xs">{\"status\":\"running\"}</code>만 반환하면 Apps Script 배포/권한/분기(action=notice/notices)와 JSON 반환을 확인해 주세요.</li>`;
+    setMoreCollapsed("more-notice", true);
+    return;
+  }
+  renderClanNotices(json);
+  setMoreCollapsed("more-notice", true);
+}
+
+function normalizeVoteResponsePayload(json) {
+  if (!json || typeof json !== "object") return [];
+  if (json.status === "error") return [];
+  const items = normalizeList(json, ["voteRespone", "voteResponse", "responses", "data", "items", "list", "rows"]);
+  return Array.isArray(items) ? items : [];
+}
+
+function voteResponsesToMarkdown(items) {
+  if (!items || !items.length) return "";
+  const lines = ["## 투표 응답", ""];
+  items.slice(0, 200).forEach((it, i) => {
+    const name = String(it.name ?? it.voterName ?? it.이름 ?? it.투표자 ?? "").trim();
+    const opt = String(it.option ?? it.choice ?? it.selectedOption ?? it.선택 ?? it.응답 ?? "").trim();
+    const date = String(it.date ?? it.time ?? it.createdAt ?? it.일시 ?? "").trim();
+    const head = `${name || "문중원"}${opt ? ` · ${opt}` : ""}${date ? ` (${date})` : ""}`;
+    lines.push(`- ${head || `응답 ${i + 1}`}`);
+  });
+  lines.push("");
+  return lines.join("\n");
+}
+
+async function loadVoteResponseSheet() {
+  const hint = document.getElementById("vote-hint");
+  const body = document.getElementById("vote-body");
+  if (!body) return;
+  if (hint) hint.textContent = "API action=voteResponse (시트: voteResponse) · 호환: voteRespone";
+  body.innerHTML = `<p class="text-sm text-stone-500">불러오는 중…</p>`;
+  if (isFileProtocol()) {
+    body.innerHTML =
+      `<p class="more-bento-empty text-sm">현재 <code class="text-xs">file://</code>로 열려 있어 API 호출이 차단될 수 있습니다. ` +
+      `정적 서버로 열어 주세요.</p>`;
+    setMoreCollapsed("more-vote", true);
+    return;
+  }
+  let json = null;
+  try {
+    json = await apiGetWait(
+      { action: "voteResponse", limit: "200" },
+      { hintEl: hint, maxAttempts: 10 }
+    );
+  } catch {
+    // ignore
+  }
+  if (!json) {
+    try {
+      json = await apiGetWait(
+        { action: "voteRespone", limit: "200" },
+        { hintEl: hint, maxAttempts: 10 }
+      );
+      if (hint) hint.textContent = "API action=voteRespone (호환)";
+    } catch {
+      json = null;
+    }
+  }
+  if (!json) {
+    body.innerHTML =
+      `<p class="more-bento-empty text-sm">투표 응답을 불러오지 못했습니다.</p>` +
+      `<p class="mt-2 text-[11px] text-stone-500">서버가 계속 <code class="text-xs">{\"status\":\"running\"}</code>만 반환하면 Apps Script 배포/권한/분기(action=voteRespone/voteResponse)와 JSON 반환을 확인해 주세요.</p>`;
+    setMoreCollapsed("more-vote", true);
+    return;
+  }
+  if (json.status === "error") {
+    body.innerHTML = `<p class="more-bento-empty text-sm">${escapeHtml(String(json.error || "투표 응답 시트를 불러오지 못했습니다."))}</p>`;
+    setMoreCollapsed("more-vote", true);
+    return;
+  }
+  const items = normalizeVoteResponsePayload(json);
+  const md = items.length ? voteResponsesToMarkdown(items) : "";
+  if (md) renderMarkdownInto(body, md);
+  else body.innerHTML = `<p class="more-bento-empty text-sm">등록된 투표 응답이 없습니다.</p>`;
+  setMoreCollapsed("more-vote", true);
 }
 
 function renderAncestorsLine(people) {
@@ -2513,6 +3223,105 @@ function renderAncestorsLine(people) {
   line.appendChild(row);
 }
 
+function kinshipPersonRowId(row) {
+  if (!row || typeof row !== "object") return "";
+  const id = pickFirstString(row, CLAN_MEMBER_ID_KEYS);
+  if (id) return String(id).trim();
+  return String(row.id ?? row.문중원ID ?? "").trim();
+}
+
+/**
+ * 촌수「관계도 보기」용: 두 사람의 부계를 **동시에 한 단계씩** 올리며 공통 조상이 나오면 즉시 중단.
+ * (기존: 각각 80단계 순차 → 벽시계 약 2배)
+ */
+async function buildKinshipVisualFatherChains(id1, id2, maxDepth = 48) {
+  const chainA = [];
+  const chainB = [];
+  let curA = String(id1 || "").trim();
+  let curB = String(id2 || "").trim();
+  const seenA = new Set();
+  const seenB = new Set();
+
+  const bestPair = () => {
+    const idxA = new Map();
+    chainA.forEach((p, i) => {
+      const pid = kinshipPersonRowId(p);
+      if (pid) idxA.set(pid, i);
+    });
+    let best = null;
+    chainB.forEach((p, j) => {
+      const pid = kinshipPersonRowId(p);
+      if (!pid || !idxA.has(pid)) return;
+      const sum = idxA.get(pid) + j;
+      if (!best || sum < best.sum) best = { id: pid, sum, iA: idxA.get(pid), iB: j };
+    });
+    return best;
+  };
+
+  const seedFromDetail = (which, curId) => {
+    if (!curId || String(selectedPersonId) !== curId) return curId;
+    if (!lastPersonDetail || typeof lastPersonDetail !== "object") return curId;
+    const ch = which === "A" ? chainA : chainB;
+    const seen = which === "A" ? seenA : seenB;
+    if (seen.has(curId)) return curId;
+    seen.add(curId);
+    ch.push(lastPersonDetail);
+    return pickFirstString(lastPersonDetail, PARENT_ID_KEYS) || "";
+  };
+
+  curA = seedFromDetail("A", curA);
+  curB = seedFromDetail("B", curB);
+  let best = bestPair();
+  if (best) return { chainA, chainB, best };
+
+  for (let d = 0; d < maxDepth && (curA || curB); d++) {
+    const takeA = !!(curA && !seenA.has(curA));
+    const takeB = !!(curB && !seenB.has(curB));
+    if (!takeA && !takeB) break;
+
+    if (takeA && takeB && curA === curB) {
+      const p = await getPersonByIdForAncestorChain(curA);
+      seenA.add(curA);
+      seenB.add(curB);
+      if (p) {
+        chainA.push(p);
+        chainB.push(p);
+        const nx = pickFirstString(p, PARENT_ID_KEYS) || "";
+        curA = nx;
+        curB = nx;
+      } else {
+        curA = "";
+        curB = "";
+      }
+    } else {
+      const [pA, pB] = await Promise.all([
+        takeA ? getPersonByIdForAncestorChain(curA) : Promise.resolve(null),
+        takeB ? getPersonByIdForAncestorChain(curB) : Promise.resolve(null),
+      ]);
+
+      if (takeA) {
+        seenA.add(curA);
+        if (pA) {
+          chainA.push(pA);
+          curA = pickFirstString(pA, PARENT_ID_KEYS) || "";
+        } else curA = "";
+      }
+      if (takeB) {
+        seenB.add(curB);
+        if (pB) {
+          chainB.push(pB);
+          curB = pickFirstString(pB, PARENT_ID_KEYS) || "";
+        } else curB = "";
+      }
+    }
+
+    best = bestPair();
+    if (best) return { chainA, chainB, best };
+  }
+
+  return { chainA, chainB, best: bestPair() };
+}
+
 async function buildFatherChainFromId(id, limit = 40) {
   const out = [];
   let cur = String(id || "").trim();
@@ -2552,11 +3361,29 @@ async function updateAncestorsForSelected() {
     return;
   }
   if (hint) hint.textContent = "직계 조상 정보를 불러오는 중…";
-  const chain = await buildFatherChainFromId(selectedPersonId, 220);
-  renderAncestorsLine(chain);
+  // 느릴 때 체감 개선: 1명씩 추가하며 중간중간 렌더
+  const out = [];
+  let cur = String(selectedPersonId || "").trim();
+  const seen = new Set();
+  for (let step = 0; step < 220; step++) {
+    if (!cur || seen.has(cur)) break;
+    seen.add(cur);
+    const p = step === 0 && lastPersonDetail ? lastPersonDetail : await getPersonByIdForAncestorChain(cur);
+    if (!p) break;
+    out.push(p);
+    if (step % 6 === 0) renderAncestorsLine(out);
+    const next = pickFirstString(p, PARENT_ID_KEYS);
+    if (!next) break;
+    cur = String(next).trim();
+  }
+  renderAncestorsLine(out);
+  if (hint) hint.textContent = `직계 조상 ${out.length}명`;
 }
 
 function initHomeActions() {
+  document
+    .getElementById("ancestors-refresh-btn")
+    ?.addEventListener("click", () => void updateAncestorsForSelected());
   document.getElementById("btn-home-open-notice")?.addEventListener("click", () => {
     showView("view-more");
   });
@@ -2569,8 +3396,10 @@ function initHomeActions() {
       window.alert("먼저 본인 확인에서 기준 인물을 선택해 주세요.");
       return;
     }
-    const json = await apiGetSilent({ action: "eightKin", id: selectedPersonId });
-    const anchorChain = await buildFatherChainFromId(selectedPersonId, 8);
+    const [json, anchorChain] = await Promise.all([
+      apiGetSilent({ action: "eightKin", id: selectedPersonId }),
+      buildFatherChainFromId(selectedPersonId, 8),
+    ]);
     await renderEightKinBox(json, anchorChain);
   });
 }
@@ -2586,6 +3415,9 @@ function ensureMap() {
     mapInstance = L.map("map-leaflet", {
       scrollWheelZoom: true,
       tap: true,
+      touchZoom: true,
+      doubleClickZoom: true,
+      zoomControl: true,
     });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
@@ -2756,8 +3588,22 @@ function nodeIsFocused(d, focusId, fromNested) {
   return false;
 }
 
+/** 가계도/8촌 트리 SVG: 처음 맞춤 변환을 저장해 「맞춤」 버튼으로 복귀 */
+function attachTreeZoomState(svgEl, zoom, initialTransform) {
+  if (!svgEl || !zoom || !initialTransform) return;
+  svgEl.__treeZoom = {
+    zoom,
+    initial: initialTransform,
+    sel: d3.select(svgEl),
+  };
+}
+
 function paintD3TreeLayout(root, focusId, wrap, svgEl, fromNested) {
   const svg = d3.select(svgEl);
+  const treeLinkStroke =
+    svgEl && String(svgEl.id || "") === "eight-kin-svg"
+      ? EIGHT_KIN_EDGE_SOFT
+      : "#d6d3d1";
   // 이전 줌/핸들러가 쌓여 중첩되어 보이는 현상 방지
   svg.on(".zoom", null);
 
@@ -2843,7 +3689,7 @@ function paintD3TreeLayout(root, focusId, wrap, svgEl, fromNested) {
     gRoot
       .append("g")
       .attr("fill", "none")
-      .attr("stroke", "#d6d3d1")
+      .attr("stroke", treeLinkStroke)
       .attr("stroke-width", 1.5)
       .selectAll("path")
       .data(links)
@@ -2868,10 +3714,10 @@ function paintD3TreeLayout(root, focusId, wrap, svgEl, fromNested) {
       .attr("height", 36)
       .attr("rx", 10)
       .attr("fill", (d) =>
-        nodeIsFocused(d, focusId, fromNested) ? "#8b2942" : "#fff"
+        nodeIsFocused(d, focusId, fromNested) ? "#166534" : "#fff"
       )
       .attr("stroke", (d) =>
-        nodeIsFocused(d, focusId, fromNested) ? "#8b2942" : "#e7e5e4"
+        nodeIsFocused(d, focusId, fromNested) ? "#166534" : "#e7e5e4"
       )
       .attr("stroke-width", 1.5);
 
@@ -2909,10 +3755,11 @@ function paintD3TreeLayout(root, focusId, wrap, svgEl, fromNested) {
     const scale = Math.min((fullW - 16) / innerW, (fullH - 16) / innerH, 1.2);
     const tx = fullW / 2 - (innerW * scale) / 2;
     const ty = fullH / 2 - (innerH * scale) / 2;
-    svg.call(
-      zoom.transform,
-      d3.zoomIdentity.translate(tx, ty).scale(Math.max(scale, 0.45))
-    );
+    const initialTransform = d3.zoomIdentity
+      .translate(tx, ty)
+      .scale(Math.max(scale, 0.45));
+    svg.call(zoom.transform, initialTransform);
+    attachTreeZoomState(svgEl, zoom, initialTransform);
     return;
   }
 
@@ -2946,7 +3793,7 @@ function paintD3TreeLayout(root, focusId, wrap, svgEl, fromNested) {
   gRoot
     .append("g")
     .attr("fill", "none")
-    .attr("stroke", "#d6d3d1")
+    .attr("stroke", treeLinkStroke)
     .attr("stroke-width", 1.5)
     .selectAll("path")
     .data(links)
@@ -2968,10 +3815,10 @@ function paintD3TreeLayout(root, focusId, wrap, svgEl, fromNested) {
     .attr("height", 36)
     .attr("rx", 10)
     .attr("fill", (d) =>
-      nodeIsFocused(d, focusId, fromNested) ? "#8b2942" : "#fff"
+      nodeIsFocused(d, focusId, fromNested) ? "#166534" : "#fff"
     )
     .attr("stroke", (d) =>
-      nodeIsFocused(d, focusId, fromNested) ? "#8b2942" : "#e7e5e4"
+      nodeIsFocused(d, focusId, fromNested) ? "#166534" : "#e7e5e4"
     )
     .attr("stroke-width", 1.5);
 
@@ -3012,10 +3859,11 @@ function paintD3TreeLayout(root, focusId, wrap, svgEl, fromNested) {
   const scale = Math.min((fullW - 16) / innerW, (fullH - 16) / innerH, 1.2);
   const tx = fullW / 2 - (innerW * scale) / 2;
   const ty = fullH / 2 - (innerH * scale) / 2;
-  svg.call(
-    zoom.transform,
-    d3.zoomIdentity.translate(tx, ty).scale(Math.max(scale, 0.45))
-  );
+  const initialTransform = d3.zoomIdentity
+    .translate(tx, ty)
+    .scale(Math.max(scale, 0.45));
+  svg.call(zoom.transform, initialTransform);
+  attachTreeZoomState(svgEl, zoom, initialTransform);
 }
 
 /* ---------- D3 가계도 ---------- */
@@ -3077,10 +3925,315 @@ function refreshTreePersonSelect() {
 function setTreeGenFilter(min, max) {
   if (min == null || max == null) {
     treeGenFilter = null;
+    treeViewMode = "default";
   } else {
     treeGenFilter = { min: Number(min), max: Number(max) };
+    // 1-10은 “전용 트리 레이아웃” 사용
+    treeViewMode =
+      treeGenFilter.min === 1 && treeGenFilter.max === 10 ? "genrange" : "default";
   }
-  refreshTreePersonSelect();
+  // 셀렉트 UI는 제거됐지만, 버튼 클릭 시 즉시 화면 갱신은 필요
+  if (document.getElementById("view-tree") && !document.getElementById("view-tree")?.classList?.contains("hidden")) {
+    void updateTreeView();
+  }
+}
+
+async function fetchGenRangePeople(min, max) {
+  // 서버에 action=genRange 구현을 권장. 없으면 null.
+  const json = await apiGetWait(
+    { action: "genRange", min: String(min), max: String(max) },
+    { maxAttempts: 8, retryDelayMs: 900 }
+  );
+  if (!json || typeof json !== "object") return null;
+  const list = normalizeList(json, ["genRange", "people", "rows", "data", "items", "list"]);
+  return Array.isArray(list) ? list : null;
+}
+
+function pickExtraSmallLine(row) {
+  if (!row || typeof row !== "object") return "";
+  // people 시트 컬럼명이 '가지경로'/'참고'인 경우도 지원
+  const a =
+    pickFirstString(row, ["가지경로", "기타", "비고", "memo", "note"]) || "";
+  const b =
+    pickFirstString(row, ["참고", "분기", "branch", "파", "파계"]) || "";
+  const aa = String(a || "").trim();
+  const bb = String(b || "").trim();
+  if (aa && bb && aa === bb) return aa; // 중복 제거
+  return [aa, bb].filter(Boolean).join(" · ");
+}
+
+function paintGenRangeCircleTree(people, minGen, maxGen, wrap, svgEl) {
+  const svg = d3.select(svgEl);
+  svg.on(".zoom", null);
+  svg.selectAll("*").remove();
+
+  const width = wrap.clientWidth || 320;
+  const height = wrap.clientHeight || 420;
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+  const PAD_L = 44; // 왼쪽 세대 숫자 공간
+  const PAD_T = 30;
+  const ROW_GAP = 86; // 세대 간 y 간격
+  const COL_GAP = 86; // 형제 간 x 간격
+  const R = 18;
+
+  const nodesRaw = annotatePeople(people).map((it) => {
+    const g = readNodeGenLike(it.row);
+    const fid = pickFirstString(it.row, PARENT_ID_KEYS);
+    return {
+      id: String(it.id),
+      name: String(it.name || "").trim(),
+      gen: typeof g === "number" ? g : null,
+      fatherId: fid ? String(fid).trim() : "",
+      extra: pickExtraSmallLine(it.row),
+      row: it.row,
+    };
+  });
+
+  // 1-10세 전용: 서버 세손이 불완전/불일치일 수 있으므로
+  // "부친ID 체인"으로 세대를 다시 추정해 형제(같은 아버지ID)는 같은 줄에 오게 한다.
+  const idTo = new Map(nodesRaw.map((n) => [n.id, n]));
+
+  // 초기: gen이 minGen인 노드(루트)를 시작점으로 삼음. 없으면 가장 작은 gen을 루트로.
+  const haveMinRoots = nodesRaw.some((n) => n.gen === minGen);
+  const minExisting = nodesRaw
+    .map((n) => n.gen)
+    .filter((g) => typeof g === "number")
+    .reduce((a, b) => Math.min(a, b), Infinity);
+  const rootGen = haveMinRoots ? minGen : (Number.isFinite(minExisting) ? minExisting : minGen);
+
+  // gen 추정치
+  const inferred = new Map(); // id -> gen
+  nodesRaw.forEach((n) => {
+    if (n.gen === rootGen) inferred.set(n.id, rootGen);
+  });
+
+  // 전파: father(gen)+1
+  // 여러 번 돌며 채움(최대 노드 수만큼)
+  for (let iter = 0; iter < nodesRaw.length; iter++) {
+    let changed = false;
+    nodesRaw.forEach((n) => {
+      const fid = n.fatherId;
+      if (!fid) return;
+      const fg = inferred.get(fid);
+      if (typeof fg !== "number") return;
+      const g2 = fg + 1;
+      if (g2 < minGen || g2 > maxGen) return;
+      if (!inferred.has(n.id) || inferred.get(n.id) !== g2) {
+        inferred.set(n.id, g2);
+        changed = true;
+      }
+    });
+    if (!changed) break;
+  }
+
+  // 최종 nodes: inferred 우선, 없으면 기존 gen 사용
+  const nodes = nodesRaw
+    .map((n) => {
+      const g = inferred.has(n.id) ? inferred.get(n.id) : n.gen;
+      return { ...n, gen: typeof g === "number" ? g : null };
+    })
+    .filter((n) => typeof n.gen === "number" && n.gen >= minGen && n.gen <= maxGen);
+
+  if (!nodes.length) {
+    svg.append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 13)
+      .text("해당 세대 범위의 인물이 없습니다.");
+    return;
+  }
+
+  // gen -> nodes
+  const byGen = new Map();
+  nodes.forEach((n) => {
+    if (!byGen.has(n.gen)) byGen.set(n.gen, []);
+    byGen.get(n.gen).push(n);
+  });
+
+  const gens = [...byGen.keys()].sort((a, b) => a - b);
+  const idToNode = new Map(nodes.map((n) => [n.id, n]));
+  const idToX = new Map();
+  const idToY = new Map();
+
+  // 정렬: 부친ID → 본인ID (형제 나란히)
+  gens.forEach((g) => {
+    byGen.get(g).sort((a, b) => {
+      const fa = a.fatherId || "";
+      const fb = b.fatherId || "";
+      if (fa !== fb) return compareClanMemberIds(fa, fb);
+      return compareClanMemberIds(a.id, b.id);
+    });
+  });
+
+  // 배치: 각 세대는 y 고정. x는 나열 후 1세를 중앙으로 보정
+  gens.forEach((g, gi) => {
+    const arr = byGen.get(g);
+    arr.forEach((n, i) => {
+      const x = PAD_L + 40 + i * COL_GAP;
+      const y = PAD_T + (g - minGen) * ROW_GAP;
+      idToX.set(n.id, x);
+      idToY.set(n.id, y);
+    });
+  });
+
+  // 1세를 화면 상단 중앙에 맞추기(1세가 있으면)
+  const gen1 = byGen.get(minGen) || [];
+  if (gen1.length) {
+    // 1세 중 첫 번째 노드를 중앙으로
+    const x0 = idToX.get(gen1[0].id);
+    const dx = width / 2 - x0;
+    nodes.forEach((n) => idToX.set(n.id, idToX.get(n.id) + dx));
+  }
+
+  const gRoot = svg.append("g").attr("class", "tree-zoom-inner");
+
+  // 왼쪽 세대 숫자(1세,2세...)
+  const gAxis = gRoot.append("g");
+  gens.forEach((g) => {
+    const y = PAD_T + (g - minGen) * ROW_GAP;
+    gAxis.append("text")
+      .attr("x", 14)
+      .attr("y", y + 4)
+      .attr("fill", "#78716c")
+      .attr("font-size", 12)
+      .attr("font-weight", 800)
+      .text(`${g}세`);
+  });
+
+  // 연결선: 부-자 (2~10세)
+  const links = [];
+  nodes.forEach((n) => {
+    if (!n.fatherId) return;
+    // fatherId가 현재 범위 내에 있을 때만 연결
+    if (!idToNode.has(n.fatherId)) return;
+    links.push({ source: n.fatherId, target: n.id });
+  });
+
+  gRoot.append("g")
+    .attr("fill", "none")
+    .attr("stroke", "#d6d3d1")
+    .attr("stroke-width", 1.2)
+    .selectAll("path")
+    .data(links)
+    .join("path")
+    .attr("d", (d) => {
+      const x1 = idToX.get(d.source);
+      const y1 = idToY.get(d.source);
+      const x2 = idToX.get(d.target);
+      const y2 = idToY.get(d.target);
+      const midY = (y1 + y2) / 2;
+      return `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`;
+    });
+
+  // 노드: 동그라미 + 이름 + (기타/분기)
+  const nodeG = gRoot.append("g")
+    .selectAll("g")
+    .data(nodes)
+    .join("g")
+    .attr("transform", (d) => `translate(${idToX.get(d.id)},${idToY.get(d.id)})`);
+
+  nodeG.append("circle")
+    .attr("r", R)
+    .attr("fill", "#fff")
+    .attr("stroke", "#166534")
+    .attr("stroke-width", 1.6);
+
+  nodeG.append("text")
+    .attr("text-anchor", "middle")
+    .attr("dy", "0.35em")
+    .attr("font-size", 11.5)
+    .attr("font-weight", 800)
+    .attr("fill", "#166534")
+    .text((d) => {
+      const t = d.name || "";
+      return t.length > 4 ? `${t.slice(0, 4)}…` : t;
+    });
+
+  nodeG.append("text")
+    .attr("text-anchor", "middle")
+    .attr("y", R + 16)
+    .attr("font-size", 10)
+    .attr("fill", "#78716c")
+    .text((d) => d.extra || "");
+
+  // zoom + 초기 맞춤
+  const zoom = d3.zoom().scaleExtent([0.35, 2.8]).on("zoom", (event) => {
+    gRoot.attr("transform", event.transform);
+  });
+  svg.call(zoom);
+
+  // 기본은 “내용이 중앙에 오도록” 살짝 당김
+  const initial = d3.zoomIdentity.translate(0, 0).scale(1);
+  svg.call(zoom.transform, initial);
+  attachTreeZoomState(svgEl, zoom, initial);
+}
+
+async function updateTreeView() {
+  const svgEl = document.getElementById("tree-svg");
+  const wrap = document.getElementById("tree-svg-wrap");
+  const hint = document.getElementById("tree-hint");
+  if (!svgEl || !wrap || typeof d3 === "undefined") return;
+
+  if (!lastSearchRows.length) {
+    const svg = d3.select(svgEl);
+    svg.selectAll("*").remove();
+    svg.append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 13)
+      .text("홈에서 세보를 검색한 뒤 기준 인물을 선택하세요.");
+    if (hint) hint.textContent = "";
+    // 검색이 없어도 genRange(서버)로 그릴 수 있으면 그린다
+    if (treeViewMode === "genrange" && treeGenFilter) {
+      let people = null;
+      try {
+        people = await fetchGenRangePeople(treeGenFilter.min, treeGenFilter.max);
+      } catch {
+        people = null;
+      }
+      if (people && people.length) {
+        if (hint) hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
+        paintGenRangeCircleTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
+        return;
+      }
+    }
+    return;
+  }
+
+  if (treeViewMode === "genrange" && treeGenFilter) {
+    if (hint) hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
+    // 서버 genRange가 있으면 사용, 없으면 현재 검색 결과에서만 구성
+    let people = await fetchGenRangePeople(treeGenFilter.min, treeGenFilter.max);
+    if (!people) people = lastSearchRows;
+    if (!people || !people.length) {
+      const svg = d3.select(svgEl);
+      svg.selectAll("*").remove();
+      svg.append("text")
+        .attr("x", "50%")
+        .attr("y", "50%")
+        .attr("text-anchor", "middle")
+        .attr("fill", "#78716c")
+        .attr("font-size", 12.5)
+        .text("1-10세 트리를 그릴 데이터가 없습니다. 서버에 action=genRange(min,max)를 추가해 주세요.");
+      return;
+    }
+    paintGenRangeCircleTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
+    return;
+  }
+
+  // 기본(기존) 렌더
+  if (hint) {
+    hint.textContent = treeGenFilter
+      ? `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세`
+      : "표시 범위: 전체";
+  }
+  const focus = selectedPersonId || annotatePeople(lastSearchRows)[0]?.id || null;
+  await drawFamilyTree(focus);
 }
 
 /**
@@ -3093,11 +4246,22 @@ async function drawFamilyTree(focusId) {
   const hint = document.getElementById("tree-hint");
   if (!svgEl || !wrap || typeof d3 === "undefined") return;
 
+  try {
+    delete svgEl.__treeZoom;
+  } catch {
+    // ignore
+  }
+
   const svg = d3.select(svgEl);
   svg.selectAll("*").remove();
 
   if (!focusId || !lastSearchRows.length) {
     updateTreeDetailCard(null);
+    if (hint) {
+      hint.textContent = lastSearchRows.length
+        ? "표시할 기준 인물이 없습니다."
+        : "홈에서 세보를 검색한 뒤 기준 인물을 선택해 주세요.";
+    }
     svg
       .append("text")
       .attr("x", "50%")
@@ -3111,7 +4275,11 @@ async function drawFamilyTree(focusId) {
   }
 
   updateTreeDetailCard(focusId);
-  if (hint) hint.textContent = "서버에서 가계도(getTree)를 불러오는 중…";
+  if (hint) {
+    hint.textContent = treeGenFilter
+      ? `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세`
+      : "표시 범위: 전체";
+  }
 
   const treeJson = await apiGetSilent({ action: "getTree", id: focusId });
 
@@ -3151,8 +4319,35 @@ async function drawFamilyTree(focusId) {
       "getTree 없음 또는 형식 불일치 · 검색 결과의 부·자 연결로 표시합니다.";
   }
 
-  const fullRows = buildGraphRows(lastSearchRows);
-  const treeRows = descendantStratifyRows(fullRows, focusId);
+  // 세대 필터가 있으면: 해당 범위만 표시(검색 결과 기반)
+  const basePeople = Array.isArray(lastSearchRows) ? lastSearchRows : [];
+  const filteredPeople =
+    treeGenFilter && Number.isFinite(treeGenFilter.min) && Number.isFinite(treeGenFilter.max)
+      ? basePeople.filter((r) => {
+          const g = readNodeGenLike(r);
+          return typeof g === "number" && g >= treeGenFilter.min && g <= treeGenFilter.max;
+        })
+      : basePeople;
+
+  if (treeGenFilter && filteredPeople.length === 0) {
+    svg
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 13)
+      .text("해당 세대 범위의 인물이 없습니다.");
+    return;
+  }
+
+  // focusId가 필터 결과에 없으면 첫 인물로 대체
+  const annotated = annotatePeople(filteredPeople);
+  const idSet = new Set(annotated.map((x) => String(x.id)));
+  const effectiveFocus = idSet.has(String(focusId)) ? focusId : (annotated[0]?.id || focusId);
+
+  const fullRows = buildGraphRows(filteredPeople);
+  const treeRows = descendantStratifyRows(fullRows, effectiveFocus);
 
   if (!treeRows.length) {
     svg
@@ -3186,7 +4381,7 @@ async function drawFamilyTree(focusId) {
     return;
   }
 
-  paintD3TreeLayout(root, focusId, wrap, svgEl, false);
+  paintD3TreeLayout(root, effectiveFocus, wrap, svgEl, false);
 }
 
 function initTreeControls() {
@@ -3197,6 +4392,113 @@ function initTreeControls() {
     updateTreeDetailCard(v || null);
     void drawFamilyTree(v || null);
   });
+}
+
+/** 촌수 계산: 입력이 문중원ID 형태면 true (숫자만, 1~24자리) */
+function kinshipInputLooksLikeId(raw) {
+  return /^\d{1,24}$/.test(String(raw || "").trim());
+}
+
+/** rows에서 이름(공백 무시·소문자 비한글 무해) 일치 행 수집 */
+function kinshipRowsMatchingName(nameQuery, rows) {
+  const norm = (s) =>
+    String(s || "")
+      .trim()
+      .replace(/\s+/g, "")
+      .toLowerCase();
+  const q = norm(nameQuery);
+  if (!q) return [];
+  const out = [];
+  (rows || []).forEach((row, idx) => {
+    if (!row || typeof row !== "object") return;
+    const nm = norm(pickFirstString(row, NAME_KEYS));
+    if (nm && nm === q) out.push({ row, idx });
+  });
+  return out;
+}
+
+function hideKinshipDisambig() {
+  const el = document.getElementById("kinship-disambig");
+  if (el) {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+  }
+}
+
+/**
+ * @param {{ slot: number, candidates: { id: string, row: object }[] }[]} sections
+ */
+function renderKinshipDisambig(sections) {
+  const host = document.getElementById("kinship-disambig");
+  if (!host) return;
+  if (!sections || !sections.length) {
+    hideKinshipDisambig();
+    return;
+  }
+  host.classList.remove("hidden");
+  const parts = [];
+  sections.forEach((sec, si) => {
+    const label = sec.slot === 1 ? "①" : "②";
+    parts.push(
+      `<p class="mb-1 text-[10px] font-semibold text-stone-600 ${si ? "mt-3 border-t border-stone-200/80 pt-2" : ""}">${label} 동명이인이 있습니다. 해당하는 한 분을 누르면 ID로 바꾼 뒤 다시 계산합니다.</p>`
+    );
+    for (const c of sec.candidates) {
+      const nm = escapeHtml(pickFirstString(c.row, NAME_KEYS) || "?");
+      const ses = escapeHtml(formatSesongLine(c.row) || "");
+      const dad = escapeHtml(formatFatherBrief(c.row));
+      const id = escapeHtml(String(c.id));
+      parts.push(
+        `<button type="button" class="kinship-pick mb-1.5 block w-full max-w-full rounded-lg border border-stone-300 bg-white px-2.5 py-2 text-left text-[11px] text-ink-800 transition hover:bg-stone-50" data-slot="${sec.slot}" data-id="${id}"><span class="font-semibold">${nm}</span>${ses ? ` · ${ses}` : ""}<span class="text-stone-600"> · 부친 ${dad}</span> · <span class="font-medium text-seal">ID ${id}</span></button>`
+      );
+    }
+  });
+  host.innerHTML = parts.join("");
+  host.querySelectorAll(".kinship-pick").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      const sl = Number(btn.getAttribute("data-slot"));
+      const inp = document.getElementById(sl === 1 ? "kinship-id1" : "kinship-id2");
+      if (inp) inp.value = id;
+      hideKinshipDisambig();
+      document.getElementById("kinship-calc-btn")?.click();
+    });
+  });
+}
+
+/**
+ * @returns {Promise<{ ok: true, id: string } | { ok: false, message?: string, ambiguous?: true, slot?: number, candidates?: {id:string,row:object}[] }>}
+ */
+async function resolveKinshipSlotInput(raw, slot) {
+  const q = String(raw || "").trim();
+  if (!q) return { ok: false, message: "입력이 비어 있습니다." };
+  if (kinshipInputLooksLikeId(q)) return { ok: true, id: q };
+
+  let matched = kinshipRowsMatchingName(q, lastSearchRows);
+  if (!matched.length) {
+    try {
+      const data = await fetchSebo(q);
+      const rows = normalizeRows(data);
+      matched = kinshipRowsMatchingName(q, rows);
+    } catch {
+      return {
+        ok: false,
+        message: `「${q}」검색에 실패했습니다. 문중원ID를 입력하거나, 홈에서 이름 검색 후 다시 시도해 주세요.`,
+      };
+    }
+  }
+
+  const byId = new Map();
+  matched.forEach(({ row, idx }) => {
+    const id = String(getClanMemberId(row, idx)).trim();
+    if (!id || id.startsWith("idx_")) return;
+    if (!byId.has(id)) byId.set(id, row);
+  });
+  const candidates = [...byId.entries()].slice(0, 8).map(([id, row]) => ({ id, row }));
+  if (!candidates.length) {
+    return { ok: false, message: `「${q}」과(와) 일치하는 사람을 찾지 못했습니다.` };
+  }
+  if (candidates.length === 1) return { ok: true, id: candidates[0].id };
+  return { ok: false, ambiguous: true, slot, candidates };
 }
 
 function initPersonDetailActions() {
@@ -3212,16 +4514,53 @@ function initPersonDetailActions() {
   });
 
   document.getElementById("kinship-calc-btn")?.addEventListener("click", async () => {
-    const id1 = document.getElementById("kinship-id1")?.value?.trim();
-    const id2 = document.getElementById("kinship-id2")?.value?.trim();
+    const raw1 = document.getElementById("kinship-id1")?.value?.trim() ?? "";
+    const raw2 = document.getElementById("kinship-id2")?.value?.trim() ?? "";
     const out = document.getElementById("kinship-calc-result");
     const visualBtn = document.getElementById("kinship-visual-btn");
     const visualHint = document.getElementById("kinship-visual-hint");
     const visualWrap = document.getElementById("kinship-visual");
-    if (!id1 || !id2) {
-      window.alert("두 문중원ID를 모두 입력해 주세요.");
+    hideKinshipDisambig();
+    if (!raw1 || !raw2) {
+      window.alert("①·②에 문중원ID 또는 이름을 모두 입력해 주세요.");
       return;
     }
+
+    const [r1, r2] = await Promise.all([
+      resolveKinshipSlotInput(raw1, 1),
+      resolveKinshipSlotInput(raw2, 2),
+    ]);
+
+    const sections = [];
+    if (!r1.ok) {
+      if (r1.ambiguous) sections.push({ slot: r1.slot, candidates: r1.candidates });
+      else {
+        window.alert(r1.message || "① 입력을 확인해 주세요.");
+        return;
+      }
+    }
+    if (!r2.ok) {
+      if (r2.ambiguous) sections.push({ slot: r2.slot, candidates: r2.candidates });
+      else {
+        window.alert(r2.message || "② 입력을 확인해 주세요.");
+        return;
+      }
+    }
+    if (sections.length) {
+      if (out) {
+        out.classList.remove("hidden");
+        out.textContent =
+          "이름이 여러 명일 때는 아래에서 한 분씩 눌러 주세요. 선택 시 해당 칸이 문중원ID로 바뀌고 자동으로 다시 계산합니다.";
+      }
+      if (visualBtn) visualBtn.classList.add("hidden");
+      if (visualHint) visualHint.classList.add("hidden");
+      if (visualWrap) visualWrap.classList.add("hidden");
+      renderKinshipDisambig(sections);
+      return;
+    }
+
+    const id1 = r1.id;
+    const id2 = r2.id;
     const seq = ++kinshipCalcSeq;
     const key = kinshipPairKey(id1, id2);
     const isProgressLikeText = (t) => {
@@ -3295,6 +4634,24 @@ function initPersonDetailActions() {
         const maxAttempts = 12;
         let lastJson = null;
       let lastDesc = "";
+        // 빠른 경로: 이미 완성된 JSON이면 긴 폴링 루프 생략
+        lastJson = await apiGetSilent(
+          { action: "kinship", id1, id2 },
+          { maxAttempts: 2, retryDelayMs: 450 }
+        );
+        {
+          const desc = String(
+            lastJson?.relation ??
+              lastJson?.description ??
+              lastJson?.message ??
+              lastJson?.label ??
+              ""
+          ).trim();
+          if (desc) lastDesc = desc;
+          const text0 = parseKinshipText(lastJson);
+          if (text0) return text0;
+        }
+
         for (let i = 0; i < maxAttempts; i++) {
           if (seq !== kinshipCalcSeq) return ""; // 새로운 계산이 시작되면 중단
           if (out) out.textContent = `조상 데이터를 분석하여 촌수를 계산 중입니다… (${i + 1}/${maxAttempts})`;
@@ -3320,7 +4677,7 @@ function initPersonDetailActions() {
           if (text) return text;
 
           // status: running 또는 null인 경우 잠깐 대기 후 재시도(점점 길게)
-          const wait = Math.min(8000, 1200 + i * 600);
+          const wait = Math.min(6000, 700 + i * 400);
           await new Promise((r) => setTimeout(r, wait));
         }
         // 끝까지 결과 숫자(촌수)가 오지 않는 경우: 서버가 진행 메시지만 주는 상태일 수 있음
@@ -3377,28 +4734,16 @@ async function renderKinshipVisual(id1, id2) {
   wrap.classList.remove("hidden");
   wrap.innerHTML = `<div class="text-sm text-stone-600">관계도를 구성하는 중…</div>`;
 
-  // 부계 직계(아버지) 라인만으로 공통 조상을 찾고, 좌/우 최대 18명씩 표시
-  const [aChain, bChain] = await Promise.all([
-    buildFatherChainFromId(id1, 80),
-    buildFatherChainFromId(id2, 80),
-  ]);
+  // 부계 직계: 두 줄을 동시에 한 단계씩 올려 공통 조상이 나오면 즉시 중단(표시는 좌·우 각 18명까지)
+  const { chainA: aChain, chainB: bChain, best } = await buildKinshipVisualFatherChains(id1, id2, 48);
 
-  const idxA = new Map(aChain.map((p, i) => [String(p.id ?? p.문중원ID ?? ""), i]));
-  let best = null; // { id, sum }
-  bChain.forEach((p, j) => {
-    const pid = String(p.id ?? p.문중원ID ?? "");
-    if (!pid || !idxA.has(pid)) return;
-    const sum = idxA.get(pid) + j;
-    if (!best || sum < best.sum) best = { id: pid, sum };
-  });
-
-  if (!best) {
+  if (!best || !best.id) {
     wrap.innerHTML = `<div class="text-sm text-stone-600">공통 조상을 찾지 못했습니다.</div>`;
     return;
   }
 
-  const aToAnc = aChain.slice(0, idxA.get(best.id) + 1);
-  const bToAnc = bChain.slice(0, (bChain.findIndex((p) => String(p.id ?? p.문중원ID ?? "") === best.id) + 1));
+  const aToAnc = aChain.slice(0, best.iA + 1);
+  const bToAnc = bChain.slice(0, best.iB + 1);
 
   const left = aToAnc.slice(0, -1).slice(0, 18);
   const right = bToAnc.slice(0, -1).slice(0, 18);
@@ -3447,6 +4792,10 @@ initTreeControls();
 initPersonDetailActions();
 initHomeActions();
 initHeaderTabs();
+initMorePageChrome();
+initMoreExpanders();
+initTreeZoomHosts();
+initMapFitButton();
 
 // 저장된 기준 인물이 있으면 자동 복원
 try {
@@ -3458,3 +4807,11 @@ try {
 
 // 홈 공지 로드
 void loadHomeNotices();
+
+// 헤더 날씨(영주) 로드 + 주기 갱신(15분)
+void refreshHeaderWeather();
+try {
+  setInterval(() => void refreshHeaderWeather(), 15 * 60 * 1000);
+} catch {
+  // ignore
+}
