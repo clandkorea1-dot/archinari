@@ -110,6 +110,8 @@ let selectedPersonId = null;
 let lastPersonDetail = null;
 const SELECTED_PERSON_STORAGE_KEY = "ucheongim_selectedPersonId_v1";
 let treeGenFilter = null; // { min:number, max:number } | null
+// 1-10세 등 genRange 결과 캐시(세션)
+const genRangePeopleCache = new Map(); // "min-max" -> people[]
 
 // 가계도 표시 모드(특정 세대 구간 전용 레이아웃 등)
 let treeViewMode = "default"; // "default" | "genrange"
@@ -145,9 +147,34 @@ const EIGHT_KIN_EDGE_SOFT = "rgba(22, 101, 52, 0.42)";
 /** kinship 결과 캐시 (id1,id2 -> {text,ts}) */
 const kinshipCache = new Map();
 const kinshipInFlight = new Map(); // key -> Promise<string>
+/** kinship 관계도(visual) 캐시: key -> { ts, data } */
+const kinshipVisualCache = new Map();
 let kinshipCalcSeq = 0;
 const KINSHIP_CACHE_STORAGE_KEY = "ucheongim_kinship_cache_v1";
 const KINSHIP_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30일
+// 관계도는 화면용 임시 캐시(세션). 너무 오래 들고 있지 않음.
+const KINSHIP_VISUAL_CACHE_TTL_MS = 1000 * 60 * 10; // 10분
+
+function kinshipVisualCacheGet(key) {
+  const v = kinshipVisualCache.get(key);
+  if (!v) return null;
+  const ts = Number(v.ts || 0);
+  if (ts && Date.now() - ts > KINSHIP_VISUAL_CACHE_TTL_MS) {
+    kinshipVisualCache.delete(key);
+    return null;
+  }
+  return v.data || null;
+}
+
+function kinshipVisualCacheSet(key, data) {
+  if (!key || !data) return;
+  kinshipVisualCache.set(key, { ts: Date.now(), data });
+  // 간단한 상한: 최근 16개만 유지
+  if (kinshipVisualCache.size > 16) {
+    const entries = [...kinshipVisualCache.entries()].sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
+    entries.slice(0, Math.max(0, entries.length - 16)).forEach(([k]) => kinshipVisualCache.delete(k));
+  }
+}
 
 function kinshipPairKey(id1, id2) {
   const a = String(id1 || "").trim();
@@ -692,7 +719,7 @@ function renderResults(rows) {
   refreshTreePersonSelect();
   debugLog("search rows (first 3)", lastSearchRows.slice(0, 3));
 
-  const maxCandidates = 8;
+  const maxCandidates = 12;
   const fragment = document.createDocumentFragment();
   const toShow = lastSearchRows.slice(0, maxCandidates);
   toShow.forEach((row, index) => {
@@ -724,7 +751,12 @@ function renderResults(rows) {
 
   // 2차 보강: 검색결과에 부친이 포함되지 않은 경우(= ID만 있는 경우),
   // person API로 부친 이름을 배치로 가져와 카드에 표시한다.
-  void hydrateFatherNamesForVisibleResults();
+  // 본인 확인 체감 우선: 즉시 네트워크를 많이 쓰지 않도록 약간 지연 후 실행
+  try {
+    setTimeout(() => void hydrateFatherNamesForVisibleResults(), 450);
+  } catch {
+    void hydrateFatherNamesForVisibleResults();
+  }
 }
 
 let fatherHydrateRunning = false;
@@ -2223,19 +2255,33 @@ async function selectPerson(clanMemberId) {
   }
   renderSelectedPersonBody(merged, clanMemberId);
 
-  const eightList = normalizeEightKinList(eightJson);
-  renderEightKinListHome(eightList);
-  // 고조부 앵커 체인(8대) 조회와 D3 관계도 렌더를 겹쳐 실행해 체감 대기 단축
-  const anchorChainP = buildFatherChainFromId(clanMemberId, 8);
-  renderEightKinTree(eightJson);
-  const anchorChain = await anchorChainP;
-  await renderEightKinBox(eightJson, anchorChain);
-  // 직계 조상(시조까지)은 별도(백그라운드)로 길게 가져와 UI 블로킹 최소화
-  void (async () => {
-    const longChain = await buildFatherChainFromId(clanMemberId, 220);
-    renderAncestorsLine(longChain);
-  })();
-  debugLog("eightKin list normalized (first 5)", eightList.slice(0, 5));
+  // 선택된 기준 인물 패널은 즉시 먼저 뜨게 하고,
+  // 8촌 렌더(특히 직계필터/부친 보강)는 다음 틱에 돌려 UI 체감 지연을 줄인다.
+  const thisPickId = String(clanMemberId);
+  try {
+    setTimeout(() => {
+      void (async () => {
+        if (String(selectedPersonId || "") !== thisPickId) return;
+        const eightList = normalizeEightKinList(eightJson);
+        renderEightKinListHome(eightList);
+        // 고조부 앵커 체인(8대) 조회와 D3 관계도 렌더를 겹쳐 실행해 체감 대기 단축
+        const anchorChainP = buildFatherChainFromId(thisPickId, 8);
+        renderEightKinTree(eightJson);
+        const anchorChain = await anchorChainP;
+        if (String(selectedPersonId || "") !== thisPickId) return;
+        await renderEightKinBox(eightJson, anchorChain);
+        debugLog("eightKin list normalized (first 5)", eightList.slice(0, 5));
+      })();
+    }, 0);
+  } catch {
+    const eightList = normalizeEightKinList(eightJson);
+    renderEightKinListHome(eightList);
+    const anchorChainP = buildFatherChainFromId(thisPickId, 8);
+    renderEightKinTree(eightJson);
+    const anchorChain = await anchorChainP;
+    await renderEightKinBox(eightJson, anchorChain);
+    debugLog("eightKin list normalized (first 5)", eightList.slice(0, 5));
+  }
 
   // 카드에서 부친을 "불러오는 중…"으로 남기지 않도록: 선택 시에만 person API로 보강
   // 부친 성함이 없고 부친 ID만 있는 경우: 부친 person API로 성함 보강(패널/가계도 카드에 반영)
@@ -2243,9 +2289,13 @@ async function selectPerson(clanMemberId) {
     const fName = pickFirstString(merged, PARENT_NAME_KEYS);
     const fId = pickFirstString(merged, PARENT_ID_KEYS);
     if (!fName && fId) {
-      const p = await getPersonById(fId);
-      const nm = p ? pickFirstString(p, NAME_KEYS) : "";
-      if (nm) {
+      // 본인 확인 체감 우선: 부친 성함 보강은 백그라운드로 처리
+      void (async () => {
+        const p = await getPersonById(fId);
+        const nm = p ? pickFirstString(p, NAME_KEYS) : "";
+        if (!nm) return;
+        // 선택 인물이 바뀌었으면 중단
+        if (String(selectedPersonId || "") !== String(clanMemberId || "")) return;
         // 로컬 표준 키로 주입
         merged["아버지 성함"] = nm;
         lastPersonDetail = merged;
@@ -2257,7 +2307,7 @@ async function selectPerson(clanMemberId) {
         );
         const el = card?.querySelector(".father-name");
         if (el) el.textContent = nm;
-      }
+      })();
     }
   }
 
@@ -2867,6 +2917,17 @@ function initTreeZoomHosts() {
       const act = btn.getAttribute("data-act");
       const svgEl = host.querySelector("svg");
       const st = svgEl?.__treeZoom;
+      // 가로 스크롤 전용(1-10세): d3.zoom 대신 transform scale만 지원
+      if (st?.simple) {
+        const cur = Number(st.scale || 1);
+        const next =
+          act === "in" ? cur * 1.12 : act === "out" ? cur / 1.12 : 1;
+        const s = Math.max(0.55, Math.min(1.6, next));
+        svgEl.style.transformOrigin = "0 0";
+        svgEl.style.transform = `scale(${s})`;
+        svgEl.__treeZoom = { simple: true, scale: s };
+        return;
+      }
       if (!st?.zoom || st.initial == null) return;
       const { zoom, initial, sel } = st;
       if (act === "in") sel.transition().duration(180).call(zoom.scaleBy, 1.28);
@@ -2875,6 +2936,9 @@ function initTreeZoomHosts() {
     });
   });
 }
+
+// (요청) 붉은 점 슬라이드바 제거 — 페이지 전환은 가로 스크롤로만 한다.
+
 
 function initMapFitButton() {
   document.getElementById("map-fit-btn")?.addEventListener("click", () => {
@@ -3234,7 +3298,7 @@ function kinshipPersonRowId(row) {
  * 촌수「관계도 보기」용: 두 사람의 부계를 **동시에 한 단계씩** 올리며 공통 조상이 나오면 즉시 중단.
  * (기존: 각각 80단계 순차 → 벽시계 약 2배)
  */
-async function buildKinshipVisualFatherChains(id1, id2, maxDepth = 48) {
+async function buildKinshipVisualFatherChains(id1, id2, maxDepth = 25) {
   const chainA = [];
   const chainB = [];
   let curA = String(id1 || "").trim();
@@ -3932,6 +3996,29 @@ function setTreeGenFilter(min, max) {
     treeViewMode =
       treeGenFilter.min === 1 && treeGenFilter.max === 10 ? "genrange" : "default";
   }
+
+  // 헤더 세대 버튼 활성 표시(선택 색상)
+  try {
+    const host = document.getElementById("hdr-submenu-tree");
+    const btns = host ? Array.from(host.querySelectorAll("button[data-tree-gen]")) : [];
+    const key =
+      treeGenFilter && Number.isFinite(treeGenFilter.min) && Number.isFinite(treeGenFilter.max)
+        ? `${treeGenFilter.min}-${treeGenFilter.max}`
+        : "";
+    btns.forEach((b) => {
+      const gen = String(b.getAttribute("data-tree-gen") || "");
+      let on = false;
+      if (!key) on = false;
+      else if (gen === "1-10" && key === "1-10") on = true;
+      else if (gen === "11-20" && key === "11-20") on = true;
+      else if (gen === "21-31" && key === "21-31") on = true;
+      else if (gen === "32+" && treeGenFilter.min === 32) on = true;
+      b.dataset.active = on ? "true" : "false";
+    });
+  } catch {
+    // ignore
+  }
+
   // 셀렉트 UI는 제거됐지만, 버튼 클릭 시 즉시 화면 갱신은 필요
   if (document.getElementById("view-tree") && !document.getElementById("view-tree")?.classList?.contains("hidden")) {
     void updateTreeView();
@@ -3940,13 +4027,17 @@ function setTreeGenFilter(min, max) {
 
 async function fetchGenRangePeople(min, max) {
   // 서버에 action=genRange 구현을 권장. 없으면 null.
+  const key = `${Number(min)}-${Number(max)}`;
+  if (genRangePeopleCache.has(key)) return genRangePeopleCache.get(key);
   const json = await apiGetWait(
     { action: "genRange", min: String(min), max: String(max) },
     { maxAttempts: 8, retryDelayMs: 900 }
   );
   if (!json || typeof json !== "object") return null;
   const list = normalizeList(json, ["genRange", "people", "rows", "data", "items", "list"]);
-  return Array.isArray(list) ? list : null;
+  const out = Array.isArray(list) ? list : null;
+  if (out) genRangePeopleCache.set(key, out);
+  return out;
 }
 
 function pickExtraSmallLine(row) {
@@ -4171,6 +4262,549 @@ function paintGenRangeCircleTree(people, minGen, maxGen, wrap, svgEl) {
   attachTreeZoomState(svgEl, zoom, initial);
 }
 
+/**
+ * 1-10세 전용(요청): 가로로 긴 캔버스 + 가로 스크롤.
+ * - 세대는 x(열)로 배치
+ * - 형제(동일 fatherId)는 id순으로 위/아래 배치하고 직사각형으로 묶음
+ * - 원 안: 이름 + 세대수
+ * - 원 밖: 참고/가지경로(가독성 있는 크기)
+ */
+function paintGenRangeHorizontalScrollTree(people, minGen, maxGen, wrap, svgEl) {
+  // D3 zoom은 사용하지 않음(가로 스크롤)
+  try {
+    delete svgEl.__treeZoom;
+  } catch {
+    // ignore
+  }
+  // zoom 버튼은 제거됨. 불필요한 transform 잔재 제거
+  try {
+    svgEl.style.transform = "";
+    svgEl.style.transformOrigin = "";
+  } catch {
+    // ignore
+  }
+  // 좌측 하단 +/−(간단 줌)용 상태 초기화
+  svgEl.__treeZoom = { simple: true, scale: 1 };
+  const svg = svgEl;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const widthHost = wrap.clientWidth || 360;
+  const heightHost = wrap.clientHeight || 360;
+  // 2페이지(좌: 1-5세 / 우: 6-10세). 한 페이지가 화면 폭 1개를 차지.
+  const pageW = Math.max(320, widthHost);
+  const PAD_L = 38;
+  const PAD_T = 18;
+  const PAD_B = 26;
+  const pages = 2;
+  const gensPerPage = 5;
+  const COL_GAP = Math.max(92, Math.floor((pageW - PAD_L * 2) / (gensPerPage - 1))); // 기본 간격
+  const ROW_GAP = 58;
+  const GROUP_GAP = 20;
+  const R = 18;
+  const GEN_Y_STEP = 40; // (요청) 10세를 기준으로 윗세대는 위로
+  const dyUp910 = Math.round((heightHost || 360) * 0.15); // (요청) 9·10세 묶음만 15% 위로
+
+  const nodesRaw = annotatePeople(people).map((it) => {
+    const g = readNodeGenLike(it.row);
+    const fid = pickFirstString(it.row, PARENT_ID_KEYS);
+    return {
+      id: String(it.id),
+      name: String(it.name || "").trim(),
+      gen: typeof g === "number" ? g : null,
+      fatherId: fid ? String(fid).trim() : "",
+      extra: pickExtraSmallLine(it.row),
+      row: it.row,
+    };
+  });
+
+  // gen 추정: father(gen)+1 전파(기존 1-10 전용 로직 유지)
+  const idTo = new Map(nodesRaw.map((n) => [n.id, n]));
+  const haveMinRoots = nodesRaw.some((n) => n.gen === minGen);
+  const minExisting = nodesRaw
+    .map((n) => n.gen)
+    .filter((g) => typeof g === "number")
+    .reduce((a, b) => Math.min(a, b), Infinity);
+  const rootGen = haveMinRoots ? minGen : (Number.isFinite(minExisting) ? minExisting : minGen);
+  const inferred = new Map();
+  nodesRaw.forEach((n) => {
+    if (n.gen === rootGen) inferred.set(n.id, rootGen);
+  });
+  for (let iter = 0; iter < nodesRaw.length; iter++) {
+    let changed = false;
+    nodesRaw.forEach((n) => {
+      if (!n.fatherId) return;
+      const pg = inferred.get(n.fatherId);
+      if (typeof pg !== "number") return;
+      const want = pg + 1;
+      if (!inferred.has(n.id)) {
+        inferred.set(n.id, want);
+        changed = true;
+      }
+    });
+    if (!changed) break;
+  }
+  nodesRaw.forEach((n) => {
+    if (typeof n.gen === "number") inferred.set(n.id, n.gen);
+  });
+
+  // 성능: 현재 화면에서 "보이는 쪽 페이지" 중심으로만 그려 렌더 부담을 낮춘다.
+  // - 왼쪽 페이지: 1~6세(6세까지 포함해 경계 연결)
+  // - 오른쪽 페이지: 5~10세(5세 포함)
+  const pageNow = (() => {
+    try {
+      const pageW = Math.max(320, wrap.clientWidth || 360);
+      return wrap.scrollLeft > pageW * 0.5 ? 1 : 0;
+    } catch {
+      return 0;
+    }
+  })();
+  const renderMinGen = pageNow === 0 ? minGen : Math.max(minGen, minGen + 4);
+  const renderMaxGen = pageNow === 0 ? Math.min(maxGen, minGen + 5) : maxGen;
+
+  const nodes = nodesRaw
+    .map((n) => ({ ...n, gen: inferred.get(n.id) ?? n.gen ?? null }))
+    .filter((n) => typeof n.gen === "number" && n.gen >= renderMinGen && n.gen <= renderMaxGen);
+
+  const idToName = new Map(nodesRaw.map((n) => [String(n.id), String(n.name || "").trim()]));
+  const skipFatherNames = new Set(["경진", "언미", "습광"]);
+  const shouldSkipFatherLine = (fatherId) => {
+    const nm = idToName.get(String(fatherId)) || "";
+    return skipFatherNames.has(String(nm).trim());
+  };
+
+  // 세대별 그룹(형제 묶음)
+  const byGen = new Map();
+  for (let g = minGen; g <= maxGen; g++) byGen.set(g, []);
+  nodes.forEach((n) => byGen.get(n.gen).push(n));
+
+  const idToPos = new Map(); // id -> {x,y,gen,fatherId,page}
+  const groupBoxes = []; // {x,y,w,h,fatherId,yMid,xMidLeft,page}
+  const groupLinks = []; // { fatherId, eldestId }
+  const singleLinks = []; // { fatherId, xTo, yTo, page }
+
+  let minYContent = Infinity;
+  let maxYContent = -Infinity;
+  let maxH = 220;
+  // (요청) 세대 간격 구간별 조정 + 페이지 내 가운데 정렬
+  const pageGens = [
+    { page: 0, start: minGen, end: minGen + 4, multipliers: [0.9, 1, 1, 1] }, // 1-2는 10% 좁힘
+    { page: 1, start: minGen + 5, end: minGen + 9, multipliers: [0.7, 0.7, 1, 1] }, // 6-7, 7-8은 30% 단축
+  ];
+  const xByGen = new Map(); // gen -> x
+  pageGens.forEach((pg) => {
+    const gaps = pg.multipliers.map((m) => COL_GAP * m);
+    const span = gaps.reduce((a, b) => a + b, 0);
+    const innerW = pageW - PAD_L * 2;
+    const offset = Math.max(0, (innerW - span) / 2);
+    let x = pg.page * pageW + PAD_L + offset;
+    xByGen.set(pg.start, x);
+    for (let i = 0; i < gaps.length; i++) {
+      x += gaps[i];
+      xByGen.set(pg.start + i + 1, x);
+    }
+  });
+
+  for (let g = minGen; g <= maxGen; g++) {
+    const arr = byGen.get(g) || [];
+    // 같은 fatherId로 그룹. fatherId 없으면 1인 그룹
+    const groups = new Map();
+    arr.forEach((n) => {
+      const k = n.fatherId ? `F:${n.fatherId}` : `S:${n.id}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(n);
+    });
+    const orderedKeys = [...groups.keys()].sort((a, b) => {
+      const fa = a.startsWith("F:") ? a.slice(2) : "";
+      const fb = b.startsWith("F:") ? b.slice(2) : "";
+      if (fa && fb) return compareClanMemberIds(fa, fb);
+      if (fa) return -1;
+      if (fb) return 1;
+      return a.localeCompare(b, "en");
+    });
+
+    const pageIndex = g <= minGen + (gensPerPage - 1) ? 0 : 1;
+    const x = xByGen.get(g) ?? (pageIndex * pageW + PAD_L);
+
+    // (요청) 10세를 세로 70% 중심으로 두고, 윗대는 위로
+    const yRef10 = PAD_T + (heightHost - PAD_T - PAD_B) * 0.7;
+    const gen9Center = yRef10 - (maxGen - 9) * GEN_Y_STEP;
+    // (요청) 6·7·8세는 9세와 같은 높이로(나란히)
+    const targetCenter =
+      g >= 6 && g <= 8
+        ? gen9Center
+        : (g === 9 || g === 10)
+          ? gen9Center
+          : yRef10 - (maxGen - g) * GEN_Y_STEP;
+
+    // 이 세대(열)에서 필요한 총 높이를 먼저 계산해서 center 정렬
+    const groupHeights = orderedKeys.map((k) => {
+      const kids = groups.get(k) || [];
+      const lastY = kids.length ? (kids.length - 1) * ROW_GAP : 0;
+      const boxPad = 18;
+      const h = kids.length >= 2 ? (lastY + boxPad * 2) : (R * 2);
+      return h;
+    });
+    const columnH =
+      groupHeights.reduce((a, b) => a + b, 0) +
+      Math.max(0, groupHeights.length - 1) * GROUP_GAP +
+      (groupHeights.length ? ROW_GAP : 0);
+    let y = targetCenter - columnH / 2;
+    // 화면 밖으로 너무 나가지 않게 클램프
+    y = Math.max(PAD_T, Math.min(y, heightHost - PAD_B - columnH));
+
+    const usedYs = [];
+    const reserveY = (want) => {
+      let y0 = want;
+      const tooClose = (a, b) => Math.abs(a - b) < 34;
+      while (usedYs.some((u) => tooClose(u, y0))) {
+        y0 += 18;
+      }
+      usedYs.push(y0);
+      return y0;
+    };
+
+    // (요청) 9세/10세는: 세대 내 전체 인물을 ID순으로 위↕아래 배치(중앙=8세 공우 기준 높이)
+    // - 예: 3명이면 가운데 1명은 기준선, 나머지는 위/아래로
+    // - 이 모드에서는 reserveY로 “흩어지지 않게” 그대로 배치한다.
+    let fixedYById = null; // Map<id, y>
+    if (Number(g) === 9 || Number(g) === 10) {
+      const flat = [];
+      orderedKeys.forEach((k) => {
+        const kids = (groups.get(k) || []).slice().sort((a, b) => compareClanMemberIds(a.id, b.id));
+        kids.forEach((n) => flat.push(n));
+      });
+      flat.sort((a, b) => compareClanMemberIds(a.id, b.id));
+      fixedYById = new Map();
+      // (요청) ID순 첫 번째가 기준선(gen9Center), 이후는 위↕아래로 번갈아 배치
+      const zigzag = (idx) => {
+        if (idx === 0) return 0;
+        const n = Math.ceil(idx / 2);
+        const sign = idx % 2 === 1 ? 1 : -1;
+        return sign * n;
+      };
+      flat.forEach((n, idx) => {
+        const yFixed = gen9Center + zigzag(idx) * ROW_GAP - dyUp910;
+        fixedYById.set(String(n.id), yFixed);
+      });
+
+      // (요청) 특정 인물 위치 스왑
+      const swapByName = (aName, bName) => {
+        const a = flat.find((n) => String(n.name || "").trim() === aName);
+        const b = flat.find((n) => String(n.name || "").trim() === bName);
+        if (!a || !b) return;
+        const ya = fixedYById.get(String(a.id));
+        const yb = fixedYById.get(String(b.id));
+        if (!Number.isFinite(ya) || !Number.isFinite(yb)) return;
+        fixedYById.set(String(a.id), yb);
+        fixedYById.set(String(b.id), ya);
+      };
+      if (Number(g) === 9) {
+        // 9세: 용비 ↔ 용주
+        swapByName("용비", "용주");
+      }
+      if (Number(g) === 10) {
+        // 10세: 의 ↔ 영
+        swapByName("의", "영");
+      }
+    }
+
+    orderedKeys.forEach((k, kIdx) => {
+      const kids = (groups.get(k) || []).slice().sort((a, b) => compareClanMemberIds(a.id, b.id));
+      const topY = fixedYById
+        ? Math.min(...kids.map((n) => fixedYById.get(String(n.id))).filter((v) => Number.isFinite(v)))
+        : y;
+      kids.forEach((n, i) => {
+        let yy = fixedYById ? fixedYById.get(String(n.id)) : (y + i * ROW_GAP);
+        // (요청) 6~9세 구간: 각 세대의 "첫번째 ID(정렬상 첫 원)"를 8세 공우와 같은 높이로 정렬
+        // - 여기서는 8세 공우가 속한 기준선(=gen9Center)을 동일 기준으로 사용
+        // - 정렬상 "첫 원" = 첫 그룹(kIdx=0)의 첫 자식(i=0)
+        if (!fixedYById && kIdx === 0 && i === 0) {
+          const gg = Number(g);
+          if (gg >= 6 && gg <= 9) {
+            yy = gen9Center;
+            usedYs.push(yy); // 이후 형제/그룹이 너무 가까이 오지 않도록 예약
+          }
+        }
+        // (요청) 1-2세, 6-8세: 단독 부자(형제 없는 경우)면 아버지와 같은 높이로 배치 → 직선 연결
+        if (!fixedYById && kids.length === 1 && n.fatherId) {
+          const gg = Number(g);
+          const inBand = (gg === 2) || (gg >= 6 && gg <= 8);
+          if (inBand) {
+            const p = idToPos.get(String(n.fatherId));
+            if (p && Number.isFinite(p.y)) yy = p.y;
+          }
+        }
+        // 위에서 y를 강제한 경우(usedYs에 이미 push됨)는 reserveY를 건너뛰어 같은 높이를 유지
+        if (!fixedYById && !(kIdx === 0 && i === 0 && Number(g) >= 6 && Number(g) <= 9)) {
+          yy = reserveY(yy);
+        }
+        idToPos.set(n.id, { x, y: yy, gen: g, fatherId: n.fatherId, page: pageIndex });
+        minYContent = Math.min(minYContent, yy);
+        maxYContent = Math.max(maxYContent, yy);
+      });
+      const lastY = fixedYById
+        ? Math.max(...kids.map((n) => fixedYById.get(String(n.id))).filter((v) => Number.isFinite(v)))
+        : (y + (kids.length ? (kids.length - 1) * ROW_GAP : 0));
+      const boxPadY = 18;
+      if (kids.length >= 2) {
+        const fatherId = k.startsWith("F:") ? k.slice(2) : "";
+        const yMid = (topY + lastY) / 2;
+        // (요청) 형제 묶음 박스 가로폭 = 원 지름(2R)
+        const xLeft = x - R;
+        groupBoxes.push({
+          x: x - R,
+          y: topY - boxPadY,
+          w: R * 2,
+          h: (lastY - topY) + boxPadY * 2,
+          fatherId,
+          yMid,
+          xMidLeft: xLeft,
+          page: pageIndex,
+        });
+        // (요청) 부모-자식 연결은 직선 1개만, 장자(=ID순 첫 번째 원)에 연결
+        if (fatherId) {
+          const eldestId = kids[0]?.id ? String(kids[0].id) : "";
+          if (eldestId) groupLinks.push({ fatherId, eldestId });
+        }
+      } else if (kids.length === 1) {
+        // (요청) 형제 없는 자식: 아버지↔자식은 직선 1개만
+        const fatherId = k.startsWith("F:") ? k.slice(2) : "";
+        if (fatherId) {
+          singleLinks.push({
+            fatherId,
+            xTo: x - R,
+            yTo: topY,
+            page: pageIndex,
+          });
+        }
+      }
+      if (!fixedYById) {
+        y = lastY + GROUP_GAP + ROW_GAP; // 다음 그룹 시작
+      }
+    });
+    maxH = Math.max(maxH, y + 120);
+  }
+
+  const totalW = pageW * pages;
+  const totalH = Math.max(360, Math.min(maxH, heightHost + 52));
+
+  // 스크롤을 위해 실제 픽셀 폭을 크게 준다(뷰박스 스케일링 대신)
+  svg.setAttribute("viewBox", `0 0 ${totalW} ${totalH}`);
+  svg.setAttribute("width", String(totalW));
+  svg.setAttribute("height", "100%");
+  svg.style.width = `${totalW}px`;
+
+  const NS = "http://www.w3.org/2000/svg";
+  const gEdge = document.createElementNS(NS, "g");
+  const gNode = document.createElementNS(NS, "g");
+  // (요청) 전체 도형이 상단에 붙는 느낌 완화: 화면 높이의 10%만큼 아래로 이동
+  const dyGlobal = Math.round((heightHost || 360) * 0.1);
+  if (dyGlobal) {
+    gEdge.setAttribute("transform", `translate(0,${dyGlobal})`);
+    gNode.setAttribute("transform", `translate(0,${dyGlobal})`);
+  }
+  svg.appendChild(gEdge);
+  svg.appendChild(gNode);
+
+  // (요청) 5-6, 6-7, 7-8 세대 간 연결선: 각 세대의 "첫 번째 ID" 원끼리 연결
+  const firstIdByGen = new Map(); // gen -> id
+  for (let gg = minGen; gg <= maxGen; gg++) {
+    const arr = (byGen.get(gg) || []).slice().sort((a, b) => compareClanMemberIds(a.id, b.id));
+    if (arr.length) firstIdByGen.set(gg, String(arr[0].id));
+  }
+  const drawGenBridge = (a, b) => {
+    const ida = firstIdByGen.get(a);
+    const idb = firstIdByGen.get(b);
+    if (!ida || !idb) return;
+    const pa = idToPos.get(String(ida));
+    const pb = idToPos.get(String(idb));
+    if (!pa || !pb) return;
+    const l = document.createElementNS(NS, "line");
+    l.setAttribute("x1", String(pa.x + R));
+    l.setAttribute("y1", String(pa.y));
+    l.setAttribute("x2", String(pb.x - R));
+    l.setAttribute("y2", String(pb.y));
+    l.setAttribute("stroke", "rgba(22, 101, 52, 0.28)");
+    l.setAttribute("stroke-width", "1.1");
+    l.setAttribute("stroke-linecap", "round");
+    gEdge.appendChild(l);
+  };
+  drawGenBridge(5, 6);
+  drawGenBridge(6, 7);
+  drawGenBridge(7, 8);
+
+  // 형제 그룹 박스(직사각형)
+  groupBoxes.forEach((b) => {
+    const r = document.createElementNS(NS, "rect");
+    r.setAttribute("x", String(b.x));
+    r.setAttribute("y", String(b.y));
+    r.setAttribute("width", String(b.w));
+    r.setAttribute("height", String(b.h));
+    r.setAttribute("rx", "14");
+    r.setAttribute("fill", "none");
+    r.setAttribute("stroke", "rgba(0,0,0,0.22)");
+    r.setAttribute("stroke-width", "1.1");
+    gEdge.appendChild(r);
+  });
+
+  // 부모-자식 연결(요청): 직선 1개만, 장자의 원에 연결
+  const seenGroup = new Set();
+  groupLinks.forEach((ln) => {
+    const k = `${ln.fatherId}|${ln.eldestId}`;
+    if (seenGroup.has(k)) return;
+    seenGroup.add(k);
+    if (shouldSkipFatherLine(ln.fatherId)) return; // (요청) 특정 인물에서 나온 선 제거
+    const s = idToPos.get(String(ln.fatherId));
+    const t = idToPos.get(String(ln.eldestId));
+    if (!s || !t) return;
+    const fatherName = idToName.get(String(ln.fatherId)) || "";
+    const childName = idToName.get(String(ln.eldestId)) || "";
+    const x1 = s.x + R;
+    const y1 = s.y;
+    const x2 = t.x - R;
+    const y2 = t.y;
+    // (요청) 8세 공우 ↔ 9세 용비: 꺾은 직선
+    if (String(fatherName).trim() === "공우" && String(childName).trim() === "용비") {
+      const midX = (x1 + x2) / 2;
+      const p = document.createElementNS(NS, "path");
+      p.setAttribute("d", `M${x1},${y1} L${midX},${y1} L${midX},${y2} L${x2},${y2}`);
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", "rgba(22, 101, 52, 0.35)");
+      p.setAttribute("stroke-width", "1.25");
+      p.setAttribute("stroke-linecap", "round");
+      p.setAttribute("stroke-linejoin", "round");
+      gEdge.appendChild(p);
+      return;
+    }
+    // 기본: 직선 1개
+    const l = document.createElementNS(NS, "line");
+    l.setAttribute("x1", String(x1));
+    l.setAttribute("y1", String(y1));
+    l.setAttribute("x2", String(x2));
+    l.setAttribute("y2", String(y2));
+    l.setAttribute("stroke", "rgba(22, 101, 52, 0.35)");
+    l.setAttribute("stroke-width", "1.25");
+    l.setAttribute("stroke-linecap", "round");
+    gEdge.appendChild(l);
+  });
+
+  // 형제 없는 자식: 아버지 → 자식 직선
+  singleLinks.forEach((ln) => {
+    if (shouldSkipFatherLine(ln.fatherId)) return; // (요청) 특정 인물에서 나온 선 제거
+    const s = idToPos.get(String(ln.fatherId));
+    if (!s) return;
+    const l = document.createElementNS(NS, "line");
+    l.setAttribute("x1", String(s.x + R));
+    l.setAttribute("y1", String(s.y));
+    l.setAttribute("x2", String(ln.xTo));
+    l.setAttribute("y2", String(ln.yTo));
+    l.setAttribute("stroke", "rgba(22, 101, 52, 0.35)");
+    l.setAttribute("stroke-width", "1.25");
+    l.setAttribute("stroke-linecap", "round");
+    gEdge.appendChild(l);
+  });
+
+  // 노드(원 + 텍스트)
+  nodes.forEach((n) => {
+    const pos = idToPos.get(n.id);
+    if (!pos) return;
+    const gx = document.createElementNS(NS, "g");
+    gx.setAttribute("transform", `translate(${pos.x},${pos.y})`);
+
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("r", String(R));
+    c.setAttribute("fill", "#fff");
+    c.setAttribute("stroke", "#166534");
+    c.setAttribute("stroke-width", "1.6");
+    gx.appendChild(c);
+
+    const name = (n.name || "?").trim();
+    const nameShort = name.length > 4 ? `${name.slice(0, 4)}…` : name;
+
+    const tx = document.createElementNS(NS, "text");
+    tx.setAttribute("text-anchor", "middle");
+    tx.setAttribute("fill", "#166534");
+    tx.setAttribute("font-weight", "800");
+    tx.setAttribute("font-size", "10.5");
+    const t1 = document.createElementNS(NS, "tspan");
+    t1.setAttribute("x", "0");
+    t1.setAttribute("dy", "-0.15em");
+    t1.textContent = nameShort;
+    const t2 = document.createElementNS(NS, "tspan");
+    t2.setAttribute("x", "0");
+    t2.setAttribute("dy", "1.15em");
+    t2.setAttribute("font-size", "9.5");
+    t2.setAttribute("font-weight", "700");
+    t2.textContent = `${pos.gen}세`;
+    tx.appendChild(t1);
+    tx.appendChild(t2);
+    gx.appendChild(tx);
+
+    // 원 밖(아래) 참고/가지경로 (요청: 진하게)
+    const extra = String(n.extra || "").trim();
+    if (extra) {
+      const ex = document.createElementNS(NS, "text");
+      ex.setAttribute("text-anchor", "middle");
+      ex.setAttribute("y", String(R + 18));
+      ex.setAttribute("font-size", "10.5");
+      ex.setAttribute("fill", "#1c1917");
+      ex.setAttribute("font-weight", "700");
+      const shown = extra.length > 22 ? `${extra.slice(0, 22)}…` : extra;
+      ex.textContent = shown;
+      gx.appendChild(ex);
+    }
+
+    gNode.appendChild(gx);
+  });
+
+  // 세로 중앙 정렬(요청: 상단 치우침 방지) — 전체를 y축으로 이동
+  try {
+    if (Number.isFinite(minYContent) && Number.isFinite(maxYContent)) {
+      const contentH = maxYContent - minYContent;
+      const targetMid = (heightHost || totalH) / 2;
+      const curMid = (minYContent + maxYContent) / 2;
+      const dy = Math.max(-120, Math.min(120, targetMid - curMid));
+      if (dy) {
+        gEdge.setAttribute("transform", `translate(0,${dy})`);
+        gNode.setAttribute("transform", `translate(0,${dy})`);
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 시작 시 1페이지(좌)로
+  try {
+    wrap.scrollLeft = 0;
+  } catch {
+    // ignore
+  }
+}
+
+function initTreeMiniZoomButtons() {
+  const wrap = document.getElementById("tree-svg-wrap");
+  const svgEl = document.getElementById("tree-svg");
+  const btnIn = document.getElementById("tree-zoom-in");
+  const btnOut = document.getElementById("tree-zoom-out");
+  if (!wrap || !svgEl || !btnIn || !btnOut) return;
+
+  const apply = (scale) => {
+    const s = Math.max(0.6, Math.min(1.7, Number(scale) || 1));
+    svgEl.style.transformOrigin = "0 0";
+    svgEl.style.transform = `scale(${s})`;
+    svgEl.__treeZoom = { simple: true, scale: s };
+  };
+
+  btnIn.addEventListener("click", () => {
+    const cur = Number(svgEl.__treeZoom?.scale || 1);
+    apply(cur * 1.12);
+  });
+  btnOut.addEventListener("click", () => {
+    const cur = Number(svgEl.__treeZoom?.scale || 1);
+    apply(cur / 1.12);
+  });
+}
+
 async function updateTreeView() {
   const svgEl = document.getElementById("tree-svg");
   const wrap = document.getElementById("tree-svg-wrap");
@@ -4198,7 +4832,7 @@ async function updateTreeView() {
       }
       if (people && people.length) {
         if (hint) hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
-        paintGenRangeCircleTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
+        paintGenRangeHorizontalScrollTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
         return;
       }
     }
@@ -4222,7 +4856,25 @@ async function updateTreeView() {
         .text("1-10세 트리를 그릴 데이터가 없습니다. 서버에 action=genRange(min,max)를 추가해 주세요.");
       return;
     }
-    paintGenRangeCircleTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
+    paintGenRangeHorizontalScrollTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
+    // 스크롤로 페이지가 바뀌면(좌/우) 가벼운 재렌더만 하도록 이벤트 1회 설치
+    if (!wrap.dataset.genrangeScrollBound) {
+      wrap.dataset.genrangeScrollBound = "1";
+      let raf = 0;
+      let lastPage = -1;
+      wrap.addEventListener("scroll", () => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          const pageW = Math.max(320, wrap.clientWidth || 360);
+          const page = wrap.scrollLeft > pageW * 0.5 ? 1 : 0;
+          if (page === lastPage) return;
+          lastPage = page;
+          // 캐시된 people로 즉시 재렌더(네트워크 없음)
+          paintGenRangeHorizontalScrollTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
+        });
+      });
+    }
     return;
   }
 
@@ -4254,6 +4906,11 @@ async function drawFamilyTree(focusId) {
 
   const svg = d3.select(svgEl);
   svg.selectAll("*").remove();
+
+  // (요청) 각 박스의 개인 트리(getTree 기반)는 현재 표시하지 않음.
+  // 향후 세대별/전용 트리 UI가 설치될 예정이므로, 여기서는 SVG를 비워 둔다.
+  if (hint) hint.textContent = "";
+  return;
 
   if (!focusId || !lastSearchRows.length) {
     updateTreeDetailCard(null);
@@ -4703,9 +5360,24 @@ function initPersonDetailActions() {
         if (visualBtn) {
           visualBtn.dataset.id1 = id1;
           visualBtn.dataset.id2 = id2;
+          visualBtn.dataset.key = key;
           visualBtn.classList.remove("hidden");
         }
         if (visualHint) visualHint.classList.remove("hidden");
+
+        // 체감 개선: 촌수 숫자가 확정되면 관계도에 필요한 부계 체인을 백그라운드로 미리 가져온다.
+        // 사용자가 곧바로 "관계도 보기"를 누를 때 대기 시간을 줄이기 위함.
+        const cachedVisual = kinshipVisualCacheGet(key);
+        if (!cachedVisual) {
+          void (async () => {
+            try {
+              const data = await buildKinshipVisualFatherChains(id1, id2, 25);
+              if (data?.best?.id) kinshipVisualCacheSet(key, data);
+            } catch {
+              // ignore (prefetch)
+            }
+          })();
+        }
       }
       return;
     }
@@ -4718,24 +5390,29 @@ function initPersonDetailActions() {
     const btn = e.currentTarget;
     const id1 = btn?.dataset?.id1;
     const id2 = btn?.dataset?.id2;
+    const key = btn?.dataset?.key || (id1 && id2 ? kinshipPairKey(id1, id2) : "");
     if (!id1 || !id2) return;
     btn.disabled = true;
     try {
-      await renderKinshipVisual(id1, id2);
+      await renderKinshipVisual(id1, id2, key);
     } finally {
       btn.disabled = false;
     }
   });
 }
 
-async function renderKinshipVisual(id1, id2) {
+async function renderKinshipVisual(id1, id2, keyOpt = "") {
   const wrap = document.getElementById("kinship-visual");
   if (!wrap) return;
   wrap.classList.remove("hidden");
   wrap.innerHTML = `<div class="text-sm text-stone-600">관계도를 구성하는 중…</div>`;
 
   // 부계 직계: 두 줄을 동시에 한 단계씩 올려 공통 조상이 나오면 즉시 중단(표시는 좌·우 각 18명까지)
-  const { chainA: aChain, chainB: bChain, best } = await buildKinshipVisualFatherChains(id1, id2, 48);
+  const key = keyOpt || kinshipPairKey(id1, id2);
+  const cached = kinshipVisualCacheGet(key);
+  const data = cached || (await buildKinshipVisualFatherChains(id1, id2, 25));
+  if (!cached && data?.best?.id) kinshipVisualCacheSet(key, data);
+  const { chainA: aChain, chainB: bChain, best } = data || {};
 
   if (!best || !best.id) {
     wrap.innerHTML = `<div class="text-sm text-stone-600">공통 조상을 찾지 못했습니다.</div>`;
@@ -4795,6 +5472,7 @@ initHeaderTabs();
 initMorePageChrome();
 initMoreExpanders();
 initTreeZoomHosts();
+initTreeMiniZoomButtons();
 initMapFitButton();
 
 // 저장된 기준 인물이 있으면 자동 복원

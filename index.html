@@ -180,7 +180,7 @@
                   </button>
                 </div>
                 <p class="mt-2 text-xs text-stone-600">
-                  동명이인이 있으면 <span class="font-semibold text-ink-900">부친</span>으로 구분해 선택하세요(최대 8명).
+                  동명이인이 있으면 <span class="font-semibold text-ink-900">부친</span>으로 구분해 선택하세요(최대 12명).
                 </p>
               </form>
 
@@ -323,51 +323,19 @@
       <div id="view-tree" class="view-panel hidden flex flex-col">
         <header class="mb-4 text-center">
           <h2 class="text-xl font-bold text-ink-900">가계도</h2>
-          <p class="mt-1 text-sm text-stone-600">
-            홈에서 검색한 인물을 선택하면 세부 정보와 가계도가 표시됩니다.
-          </p>
         </header>
         <div class="rounded-2xl border border-stone-200/80 bg-white/90 p-4 shadow-sm">
           <p id="tree-hint" class="mb-2 text-xs text-stone-500"></p>
           <div
             id="tree-svg-wrap"
-            class="tree-zoom-host relative min-h-[360px] w-full overflow-hidden rounded-xl border border-stone-100 bg-stone-50/80"
+            class="tree-zoom-host relative min-h-[360px] w-full overflow-x-auto overflow-y-hidden rounded-xl border border-stone-100 bg-stone-50/80"
           >
-            <div
-              class="absolute right-2 top-2 z-10 flex gap-0.5 rounded-lg border border-stone-200/90 bg-white/95 p-0.5 shadow-sm"
-              role="toolbar"
-              aria-label="가계도 확대·축소"
-            >
-              <button
-                type="button"
-                class="tree-z rounded px-2 py-1 text-xs font-medium text-stone-700 hover:bg-stone-50"
-                data-act="in"
-                title="확대"
-              >
-                ＋
-              </button>
-              <button
-                type="button"
-                class="tree-z rounded px-2 py-1 text-xs font-medium text-stone-700 hover:bg-stone-50"
-                data-act="out"
-                title="축소"
-              >
-                －
-              </button>
-              <button
-                type="button"
-                class="tree-z rounded px-2 py-1 text-xs font-medium text-stone-700 hover:bg-stone-50"
-                data-act="reset"
-                title="처음 맞춤 화면으로"
-              >
-                맞춤
-              </button>
-            </div>
             <svg id="tree-svg" class="h-full w-full touch-none" role="img" aria-label="가계도"></svg>
+            <div class="tree-zoom-mini" aria-label="가계도 확대·축소">
+              <button type="button" id="tree-zoom-out" class="tree-zoom-mini-btn" aria-label="축소">－</button>
+              <button type="button" id="tree-zoom-in" class="tree-zoom-mini-btn" aria-label="확대">＋</button>
+            </div>
           </div>
-          <p class="mt-2 text-center text-[11px] text-stone-400">
-            상단의 세대 버튼으로 표시 범위를 바꿉니다 · 드래그/핀치 확대 · 맞춤으로 원래 화면 복귀
-          </p>
         </div>
       </div>
 
@@ -562,7 +530,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="main.js?v=20260421-3"></script>
+    <script src="main.js?v=20260421-23"></script>
   </body>
 </html>
 
