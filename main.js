@@ -4862,8 +4862,17 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
     null;
 
   if (!root11) {
-    // 데이터가 예상과 다르면 안전하게 폴백
-    paintGenRangeHorizontalScrollTree(people, minGen, maxGen, wrap, svgEl);
+    // (중요) 11-20세는 타 렌더러(예: 1-10세)로 폴백하지 않는다.
+    // 데이터가 예상과 다르면 "이 렌더러 안에서" 안전하게 실패 표시만 한다.
+    svg
+      .attr("viewBox", `0 0 ${widthHost} ${heightHost}`)
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 13)
+      .text("11세 기준 인물(춘)을 찾지 못했습니다.");
     return;
   }
 
@@ -5079,6 +5088,27 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
   const colBottomTight = colMid + colHalf;
   const idToPos = new Map(); // id -> {x,y}
 
+  // ---------------- 12세 규칙(요청) ----------------
+  // - 아버지 id순으로 후대 자손을 렌더링
+  // - 형제(같은 아버지)의 순서는 id순
+  // - 균등 분배보다 "부자 연결이 보기 좋도록" 아버지 y를 기준으로 군집 배치
+  const sortByFatherThenId = (list) => {
+    const arr = Array.isArray(list) ? list.slice() : [];
+    arr.sort((a, b) => {
+      const fa = String(a?.fatherId || "").trim();
+      const fb = String(b?.fatherId || "").trim();
+      if (fa !== fb) return compareClanMemberIds(fa, fb);
+      return compareClanMemberIds(String(a?.id || ""), String(b?.id || ""));
+    });
+    return arr;
+  };
+  gens.forEach((g) => {
+    if (g < 12) return;
+    const arr = visibleByGen.get(g) || [];
+    if (!arr.length) return;
+    visibleByGen.set(g, sortByFatherThenId(arr));
+  });
+
   gens.forEach((g, idx) => {
     const x0 = PAD_L + idx * (COL_W + COL_GAP);
     const cx = x0 + COL_W / 2;
@@ -5094,6 +5124,56 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
       idToPos.set(String(it.id), { x: cx, y: colTopTight + step * i });
     });
   });
+
+  // 아버지 y 기준 군집 배치(연결이 보기 좋도록)
+  const clampY = (y) => Math.max(colTopTight, Math.min(colBottomTight, Number(y)));
+  const computeFatherAlignedY = () => {
+    // 세대별로 "현재 idToPos"를 바탕으로 아버지 y를 읽어서 자식 y를 재배치한다.
+    for (const g of gens) {
+      if (g < 12) continue;
+      const arr = visibleByGen.get(g) || [];
+      if (!arr.length) continue;
+
+      // fatherId -> children
+      const groups = new Map();
+      arr.forEach((n) => {
+        const fid = String(n?.fatherId || "").trim();
+        const key = fid || `__no_father__:${String(n?.id || "")}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(n);
+      });
+      const orderedKeys = [...groups.keys()].sort((a, b) => {
+        const fa = a.startsWith("__no_father__") ? "" : a;
+        const fb = b.startsWith("__no_father__") ? "" : b;
+        if (fa !== fb) return compareClanMemberIds(fa, fb);
+        return a.localeCompare(b, "en");
+      });
+
+      // 간격: 너무 촘촘하면 선이 겹치고, 너무 넓으면 연결이 흐트러짐
+      // (요청) 문중원(형제) 간격을 다시 30% 더 넓게(36 * 1.3 ≈ 46.8)
+      const DY = 47;
+
+      orderedKeys.forEach((key) => {
+        const kids = groups.get(key) || [];
+        kids.sort((a, b) => compareClanMemberIds(String(a.id), String(b.id)));
+        const fid = key.startsWith("__no_father__") ? "" : key;
+        const fp = fid ? idToPos.get(String(fid)) : null;
+        if (!fp || typeof fp.y !== "number") {
+          // 아버지 y를 모르면 기존 균등 배치 유지
+          return;
+        }
+        const centerY = clampY(fp.y);
+        const mid = (kids.length - 1) / 2;
+        kids.forEach((k, i) => {
+          const cur = idToPos.get(String(k.id));
+          if (!cur) return;
+          const want = centerY + (i - mid) * DY;
+          idToPos.set(String(k.id), { x: cur.x, y: clampY(want) });
+        });
+      });
+    }
+  };
+  computeFatherAlignedY();
 
   // ---- 표시 예외(교차 최소화/형제 정렬/선 단순화) ----
   // 1) "연의 여1"은 "회보" 위(바로 위)로: 같은 세대 목록 내 순서 조정
@@ -5149,6 +5229,32 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
       guard += 1;
     }
     return Math.max(colTopTight, Math.min(colBottomTight, y));
+  };
+
+  const nudgeChildGroupByFatherName = (fatherName, dy) => {
+    const fid = findNodeIdByName(fatherName);
+    if (!fid) return;
+    // 화면에 보이는 인물(visibleByGen) 중 fatherId가 일치하는 자식만 이동
+    for (const g of gens) {
+      if (g <= 11) continue;
+      const arr = visibleByGen.get(g) || [];
+      arr.forEach((n) => {
+        if (String(n?.fatherId || "") !== String(fid)) return;
+        const cid = String(n.id);
+        const cp = idToPos.get(cid);
+        if (!cp) return;
+        const y2 = nudgeUniqueY(g, clampY(cp.y + Number(dy || 0)));
+        idToPos.set(cid, { x: cp.x, y: y2 });
+      });
+    }
+  };
+
+  const alignXOffsetByName = (nameA, nameB) => {
+    const a = findNodeIdByName(nameA);
+    const b = findNodeIdByName(nameB);
+    if (!a || !b) return;
+    const bx = Number(xOffsetById.get(String(b)) || 0);
+    xOffsetById.set(String(a), bx);
   };
 
   const alignChildToFatherByName = (fatherName, childName) => {
@@ -5219,6 +5325,15 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
 
   // 3) 선 단순화(난을 영권 우측)
   shiftRightOfByName("난", "영권");
+
+  // 4) (요청) 용견의 아들들을 조금 아래로 내려 현주의 여와 겹침 완화
+  // dy는 "조금" 수준으로만 이동(과도 이동 방지)
+  nudgeChildGroupByFatherName("용견", 18);
+
+  // 5) (요청) 19세 난을 린과 같은 축(같은 x 오프셋)으로 맞추고,
+  // 난의 아들 몽경이 제자리를 찾도록 난-몽경 연결을 더 직관적으로 정렬
+  alignXOffsetByName("난", "린");
+  alignChildToFatherByName("난", "몽경");
 
   // 막대선 연결(부→자): 스파인+가로바 형태
   const linkG = svg.append("g").attr("aria-label", "후손 연결선");
