@@ -115,6 +115,7 @@ const genRangePeopleCache = new Map(); // "min-max" -> people[]
 
 // 가계도 표시 모드(특정 세대 구간 전용 레이아웃 등)
 let treeViewMode = "default"; // "default" | "genrange"
+let gen21SelectedRootId = ""; // 21-31세 전용: 선택된 25세(시조) id
 
 function loadSelectedPersonIdFromStorage() {
   try {
@@ -3997,6 +3998,7 @@ function setTreeGenFilter(min, max) {
     const k = `${treeGenFilter.min}-${treeGenFilter.max}`;
     if (k === "1-10") treeViewMode = "genrange_1_10";
     else if (k === "11-20") treeViewMode = "genrange_11_20";
+    else if (k === "21-31") treeViewMode = "genrange_21_31";
     else treeViewMode = "default";
   }
 
@@ -5456,11 +5458,240 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
   });
 }
 
+function toggleGen21UI(on) {
+  const baseWrap = document.getElementById("tree-svg-wrap");
+  const gen21Wrap = document.getElementById("tree-gen21-wrap");
+  if (baseWrap) baseWrap.classList.toggle("hidden", !!on);
+  if (gen21Wrap) gen21Wrap.classList.toggle("hidden", !on);
+}
+
+function renderGen21PickButtons(people21to25) {
+  const host = document.getElementById("tree-gen21-pick25");
+  const hint = document.getElementById("tree-gen21-top-hint");
+  if (!host) return;
+  host.innerHTML = "";
+
+  const itemsAll = annotatePeople(Array.isArray(people21to25) ? people21to25 : []).map((it) => ({
+    id: String(it.id),
+    name: String(it.name || "").trim(),
+    gen: readNodeGenLike(it.row),
+  }));
+  const list25 = itemsAll
+    .filter((x) => Number(x.gen) === 25)
+    .sort((a, b) => compareClanMemberIds(a.id, b.id));
+
+  const picks = list25.slice(0, 4); // (요청) 25세 4명을 선택 버튼으로 표시
+  if (hint) {
+    hint.textContent = "상단(21–25) 렌더링 방식은 미정 · 25세 시조 선택만 고정";
+  }
+  if (!picks.length) {
+    host.innerHTML = `<span class="text-[11px] text-stone-500">25세 인물이 없습니다.</span>`;
+    return;
+  }
+
+  if (!gen21SelectedRootId || !picks.some((p) => p.id === String(gen21SelectedRootId))) {
+    gen21SelectedRootId = picks[0].id;
+  }
+
+  picks.forEach((p) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className =
+      "rounded-full border border-stone-200 bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-stone-700 hover:bg-stone-50";
+    btn.dataset.active = p.id === String(gen21SelectedRootId) ? "true" : "false";
+    btn.textContent = `${p.name || p.id}`;
+    btn.addEventListener("click", () => {
+      gen21SelectedRootId = p.id;
+      // 버튼 active 갱신
+      try {
+        host.querySelectorAll("button").forEach((b) => (b.dataset.active = "false"));
+        btn.dataset.active = "true";
+      } catch {
+        // ignore
+      }
+      void updateTreeView(); // 21-31 전용 하단 재렌더
+    });
+    host.appendChild(btn);
+  });
+}
+
+function paintTreeLikeEightKinRenderer(rows, rootId, wrap, svgEl) {
+  // (중요) 8촌 친척 트리 구현 방식(기존): tree graph이면 paintD3TreeLayout를 사용한다.
+  const svg = d3.select(svgEl);
+  svg.on(".zoom", null);
+  svg.selectAll("*").remove();
+  try {
+    delete svgEl.__treeZoom;
+  } catch {
+    // ignore
+  }
+
+  const list = Array.isArray(rows) ? rows : [];
+  const rid = String(rootId || "").trim() || (list[0] ? String(list[0].id) : "");
+  if (!rid || !list.length) {
+    svg
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 12.5)
+      .text("표시할 데이터가 없습니다.");
+    return;
+  }
+
+  const idSet = new Set(list.map((r) => String(r.id)));
+  const stratRows = list.map((r) => {
+    const id = String(r.id);
+    const parentId = id === rid ? "" : String(r.parentId || "").trim();
+    // 부모가 목록에 없으면(직계 밖/데이터 누락) 루트로 올려 안전하게 표시
+    const safeParent = parentId && idSet.has(parentId) ? parentId : "";
+    return { ...r, id, parentId: safeParent };
+  });
+
+  let root;
+  try {
+    root = d3
+      .stratify()
+      .id((d) => d.id)
+      .parentId((d) => d.parentId || "")(stratRows);
+  } catch {
+    svg
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 12.5)
+      .text("트리 데이터 구성이 올바르지 않습니다.");
+    return;
+  }
+  paintD3TreeLayout(root, rid, wrap, svgEl, false);
+}
+
+function paintGenRange21to31DescEightRule(rootId, people, minGen, maxGen, wrap, svgEl) {
+  // (중요) 21-31세 하단 렌더링 규칙은 "8촌 친척 트리 구현 방식"을 그대로 사용한다.
+  const rid = String(rootId || "").trim();
+  const svg = d3.select(svgEl);
+  svg.on(".zoom", null);
+  svg.selectAll("*").remove();
+  if (!rid) {
+    svg
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 12.5)
+      .text("25세 시조를 선택하세요.");
+    return;
+  }
+
+  const nodesRaw = annotatePeople(Array.isArray(people) ? people : []).map((it) => {
+    const g = readNodeGenLike(it.row);
+    const fid = pickFirstString(it.row, PARENT_ID_KEYS);
+    return {
+      id: String(it.id),
+      name: String(it.name || "").trim(),
+      gen: typeof g === "number" ? g : null,
+      fatherId: fid ? String(fid).trim() : "",
+      row: it.row,
+    };
+  });
+  const idToNode = new Map(nodesRaw.map((n) => [String(n.id), n]));
+  const root = idToNode.get(rid);
+  if (!root) {
+    svg
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 12.5)
+      .text("선택된 25세 시조를 데이터에서 찾지 못했습니다.");
+    return;
+  }
+
+  // children map
+  const childrenByFather = new Map();
+  nodesRaw.forEach((n) => {
+    const fid = String(n.fatherId || "").trim();
+    if (!fid) return;
+    if (!childrenByFather.has(fid)) childrenByFather.set(fid, []);
+    childrenByFather.get(fid).push(n);
+  });
+  childrenByFather.forEach((arr) => arr.sort((a, b) => compareClanMemberIds(a.id, b.id)));
+
+  // 직계 후손만 수집(BFS) + 범위(21-31) 내만 렌더링
+  const keep = new Map(); // id -> node
+  const seen = new Set([rid]);
+  const q = [root];
+  while (q.length) {
+    const cur = q.shift();
+    const kids = childrenByFather.get(String(cur.id)) || [];
+    kids.forEach((k) => {
+      const id = String(k.id);
+      if (seen.has(id)) return;
+      seen.add(id);
+      q.push(k);
+    });
+  }
+  // 루트 + 후손 중 범위 내만 keep
+  nodesRaw.forEach((n) => {
+    const id = String(n.id);
+    if (!seen.has(id)) return;
+    if (typeof n.gen !== "number") return;
+    if (n.gen < minGen || n.gen > maxGen) return;
+    keep.set(id, n);
+  });
+  // 루트는 반드시 포함
+  if (typeof root.gen === "number" && root.gen >= minGen && root.gen <= maxGen) {
+    keep.set(rid, root);
+  }
+
+  const rows = [...keep.values()]
+    .map((n) => ({
+      id: String(n.id),
+      parentId: String(n.fatherId || "").trim(),
+      name: String(n.name || n.id).trim(),
+      row: n.row,
+    }))
+    .sort((a, b) => {
+      // 8촌 규칙 정렬: parentId -> id
+      const fa = String(a.parentId || "");
+      const fb = String(b.parentId || "");
+      if (fa !== fb) return compareClanMemberIds(fa, fb);
+      return compareClanMemberIds(String(a.id), String(b.id));
+    });
+
+  if (!rows.length) {
+    svg
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 12.5)
+      .text("표시할 직계 후손 데이터가 없습니다.");
+    return;
+  }
+
+  paintTreeLikeEightKinRenderer(rows, rid, wrap, svgEl);
+}
+
 async function updateTreeView() {
   const svgEl = document.getElementById("tree-svg");
   const wrap = document.getElementById("tree-svg-wrap");
   const hint = document.getElementById("tree-hint");
   if (!svgEl || !wrap || typeof d3 === "undefined") return;
+
+  // 21-31세 전용 UI 표시/숨김
+  toggleGen21UI(treeViewMode === "genrange_21_31" && !!treeGenFilter);
 
   if (!lastSearchRows.length) {
     const svg = d3.select(svgEl);
@@ -5474,7 +5705,10 @@ async function updateTreeView() {
       .text("홈에서 세보를 검색한 뒤 기준 인물을 선택하세요.");
     if (hint) hint.textContent = "";
     // 검색이 없어도 genRange(서버)로 그릴 수 있으면 그린다
-    if ((treeViewMode === "genrange_1_10" || treeViewMode === "genrange_11_20") && treeGenFilter) {
+    if (
+      (treeViewMode === "genrange_1_10" || treeViewMode === "genrange_11_20" || treeViewMode === "genrange_21_31") &&
+      treeGenFilter
+    ) {
       let people = null;
       try {
         people = await fetchGenRangePeople(treeGenFilter.min, treeGenFilter.max);
@@ -5485,6 +5719,31 @@ async function updateTreeView() {
         if (hint) hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
         if (treeViewMode === "genrange_11_20") {
           paintGenRange11to20TimelineTree(people, 11, 20, wrap, svgEl);
+        } else if (treeViewMode === "genrange_21_31") {
+          // 21-31세 전용: 상단(21-25) + 하단(25시조→31) 렌더
+          const topWrap = document.getElementById("tree-gen21-top-svg-wrap");
+          const topSvg = document.getElementById("tree-gen21-top-svg");
+          const bottomWrap = document.getElementById("tree-gen21-bottom-svg-wrap");
+          const bottomSvg = document.getElementById("tree-gen21-bottom-svg");
+          const bottomHint = document.getElementById("tree-gen21-bottom-hint");
+          if (topWrap && topSvg && bottomWrap && bottomSvg) {
+            renderGen21PickButtons(people);
+            // 상단 렌더링은 미정: 현재는 안내 텍스트만 표시
+            const s = d3.select(topSvg);
+            s.selectAll("*").remove();
+            s
+              .append("text")
+              .attr("x", "50%")
+              .attr("y", "50%")
+              .attr("text-anchor", "middle")
+              .attr("fill", "#78716c")
+              .attr("font-size", 12.5)
+              .text("상단(21–25) 렌더링 방식은 추후 결정");
+
+            if (bottomHint) bottomHint.textContent = gen21SelectedRootId ? `시조(25세): ${gen21SelectedRootId}` : "25세 시조를 선택하세요.";
+            paintGenRange21to31DescEightRule(gen21SelectedRootId, people, 21, 31, bottomWrap, bottomSvg);
+          }
+          return;
         } else {
           // 1-10세 전용 렌더러(건드리지 않음)
           paintGenRangeHorizontalScrollTree(people, 1, 10, wrap, svgEl);
@@ -5495,7 +5754,10 @@ async function updateTreeView() {
     return;
   }
 
-  if ((treeViewMode === "genrange_1_10" || treeViewMode === "genrange_11_20") && treeGenFilter) {
+  if (
+    (treeViewMode === "genrange_1_10" || treeViewMode === "genrange_11_20" || treeViewMode === "genrange_21_31") &&
+    treeGenFilter
+  ) {
     if (hint) hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
     // 서버 genRange가 있으면 사용, 없으면 현재 검색 결과에서만 구성
     let people = await fetchGenRangePeople(treeGenFilter.min, treeGenFilter.max);
@@ -5512,12 +5774,35 @@ async function updateTreeView() {
         .text(
           treeViewMode === "genrange_11_20"
             ? "11-20세 트리를 그릴 데이터가 없습니다. 서버에 action=genRange(min,max)를 추가해 주세요."
-            : "1-10세 트리를 그릴 데이터가 없습니다. 서버에 action=genRange(min,max)를 추가해 주세요."
+            : treeViewMode === "genrange_21_31"
+              ? "21-31세 트리를 그릴 데이터가 없습니다. 서버에 action=genRange(min,max)를 추가해 주세요."
+              : "1-10세 트리를 그릴 데이터가 없습니다. 서버에 action=genRange(min,max)를 추가해 주세요."
         );
       return;
     }
     if (treeViewMode === "genrange_11_20") {
       paintGenRange11to20TimelineTree(people, 11, 20, wrap, svgEl);
+    } else if (treeViewMode === "genrange_21_31") {
+      const topWrap = document.getElementById("tree-gen21-top-svg-wrap");
+      const topSvg = document.getElementById("tree-gen21-top-svg");
+      const bottomWrap = document.getElementById("tree-gen21-bottom-svg-wrap");
+      const bottomSvg = document.getElementById("tree-gen21-bottom-svg");
+      const bottomHint = document.getElementById("tree-gen21-bottom-hint");
+      if (topWrap && topSvg && bottomWrap && bottomSvg) {
+        renderGen21PickButtons(people);
+        const s = d3.select(topSvg);
+        s.selectAll("*").remove();
+        s
+          .append("text")
+          .attr("x", "50%")
+          .attr("y", "50%")
+          .attr("text-anchor", "middle")
+          .attr("fill", "#78716c")
+          .attr("font-size", 12.5)
+          .text("상단(21–25) 렌더링 방식은 추후 결정");
+        if (bottomHint) bottomHint.textContent = gen21SelectedRootId ? `시조(25세): ${gen21SelectedRootId}` : "25세 시조를 선택하세요.";
+        paintGenRange21to31DescEightRule(gen21SelectedRootId, people, 21, 31, bottomWrap, bottomSvg);
+      }
     } else {
       // 1-10세 전용 렌더러(건드리지 않음)
       paintGenRangeHorizontalScrollTree(people, 1, 10, wrap, svgEl);
@@ -5527,6 +5812,7 @@ async function updateTreeView() {
   }
 
   // 기본(기존) 렌더
+  toggleGen21UI(false);
   if (hint) {
     hint.textContent = treeGenFilter
       ? `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세`
