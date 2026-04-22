@@ -3992,9 +3992,12 @@ function setTreeGenFilter(min, max) {
     treeViewMode = "default";
   } else {
     treeGenFilter = { min: Number(min), max: Number(max) };
-    // 1-10은 “전용 트리 레이아웃” 사용
-    treeViewMode =
-      treeGenFilter.min === 1 && treeGenFilter.max === 10 ? "genrange" : "default";
+    // (중요) 1-10세는 기존 전용 렌더러를 그대로 유지한다.
+    // 11-20세는 1-10세와 "완전히 별도" 전용 렌더러를 사용한다.
+    const k = `${treeGenFilter.min}-${treeGenFilter.max}`;
+    if (k === "1-10") treeViewMode = "genrange_1_10";
+    else if (k === "11-20") treeViewMode = "genrange_11_20";
+    else treeViewMode = "default";
   }
 
   // 헤더 세대 버튼 활성 표시(선택 색상)
@@ -4796,6 +4799,548 @@ function initTreeMiniZoomButtons() {
   });
 }
 
+/**
+ * 11-20세 전용(요청):
+ * - 11세 "춘"을 루트로 둔다(선조와 연결선 없음).
+ * - "춘"의 아들(= fatherId가 춘인 12세)마다 색상을 분리하고, 그 자손을 20세까지 표시.
+ * - 가로로 긴 연표형: 위에 세대 구분선(11~20), 아래에 인물.
+ * - 가지(아들 단위) 접기/펼치기 지원.
+ * - 각 인물에는 시트의 참고열(참고/가지경로/비고 등) 표시.
+ */
+function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
+  // (중요) 11-20세는 1-10세와 완전 독립 렌더러.
+  // 지금 단계 목표: "세대별 컬럼 배치"만 먼저 정확히 고정.
+  try {
+    delete svgEl.__treeZoom;
+  } catch {
+    // ignore
+  }
+  try {
+    svgEl.style.transform = "";
+    svgEl.style.transformOrigin = "";
+  } catch {
+    // ignore
+  }
+  svgEl.__treeZoom = { simple: true, scale: 1 };
+  while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+  const widthHost = wrap.clientWidth || 360;
+  const heightHost = wrap.clientHeight || 360;
+
+  const PAD_L = 18;
+  const PAD_R = 18;
+  const PAD_T = 14;
+  const PAD_B = 16;
+  // (요청) 세대 셀(컬럼) 크기를 줄여 가로 길이를 줄인다.
+  const COL_W = 108;
+  const COL_GAP = 10;
+  const R = 14;
+  const HEADER_H = 8; // 상단에는 세대 숫자만 남김(도형/컨트롤 제거)
+
+  const gens = [];
+  for (let g = minGen; g <= maxGen; g++) gens.push(g);
+
+  const svg = d3.select(svgEl);
+
+  const nodesRaw = annotatePeople(people).map((it) => {
+    const g = readNodeGenLike(it.row);
+    const fid = pickFirstString(it.row, PARENT_ID_KEYS);
+    return {
+      id: String(it.id),
+      name: String(it.name || "").trim(),
+      gen: typeof g === "number" ? g : null,
+      fatherId: fid ? String(fid).trim() : "",
+      extra: pickExtraSmallLine(it.row),
+      row: it.row,
+    };
+  });
+
+  const norm = (s) => String(s || "").replace(/\s+/g, "").trim();
+  const root11 =
+    nodesRaw.find((n) => n.gen === 11 && norm(n.name).includes("춘")) ||
+    nodesRaw.find((n) => n.gen === 11) ||
+    null;
+
+  if (!root11) {
+    // 데이터가 예상과 다르면 안전하게 폴백
+    paintGenRangeHorizontalScrollTree(people, minGen, maxGen, wrap, svgEl);
+    return;
+  }
+
+  const nodesInRange = nodesRaw.filter(
+    (n) => typeof n.gen === "number" && n.gen >= minGen && n.gen <= maxGen
+  );
+  if (!nodesInRange.length) {
+    svg.append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 13)
+      .text("해당 세대 범위의 인물이 없습니다.");
+    return;
+  }
+
+  // 춘 후손만 수집: fatherId 체인을 따라 내려가며 20세까지
+  const childrenByFather = new Map();
+  nodesInRange.forEach((n) => {
+    const fid = String(n.fatherId || "").trim();
+    if (!fid) return;
+    if (!childrenByFather.has(fid)) childrenByFather.set(fid, []);
+    childrenByFather.get(fid).push(n);
+  });
+  childrenByFather.forEach((arr) => arr.sort((a, b) => compareClanMemberIds(a.id, b.id)));
+
+  const descendantsByGen = new Map();
+  gens.forEach((g) => descendantsByGen.set(g, []));
+  descendantsByGen.get(11).push(root11);
+
+  const seen = new Set([String(root11.id)]);
+  const q = [root11];
+  while (q.length) {
+    const cur = q.shift();
+    const kids = childrenByFather.get(String(cur.id)) || [];
+    kids.forEach((k) => {
+      const id = String(k.id);
+      if (seen.has(id)) return;
+      seen.add(id);
+      if (typeof k.gen === "number" && k.gen >= minGen && k.gen <= maxGen) {
+        descendantsByGen.get(k.gen)?.push(k);
+      }
+      q.push(k);
+    });
+  }
+
+  // 11세는 "춘만 남김"
+  descendantsByGen.set(11, [root11]);
+  gens.forEach((g) => {
+    if (g === 11) return;
+    const arr = descendantsByGen.get(g) || [];
+    arr.sort((a, b) => compareClanMemberIds(a.id, b.id));
+  });
+
+  // 3단 접기 상태:
+  // 1) 세대 컬럼 접기 2) 가지(12세 아들) 접기 3) 개인(해당 인물의 하위) 접기
+  const stKey = "__tree11_20_fold3";
+  const st = (svgEl[stKey] && typeof svgEl[stKey] === "object") ? svgEl[stKey] : {};
+  if (!st.collapsedGens || !(st.collapsedGens instanceof Set)) st.collapsedGens = new Set();
+  if (!st.collapsedBranches || !(st.collapsedBranches instanceof Set)) st.collapsedBranches = new Set();
+  if (!st.collapsedPersons || !(st.collapsedPersons instanceof Set)) st.collapsedPersons = new Set();
+  svgEl[stKey] = st;
+
+  const isGenCollapsed = (g) => st.collapsedGens.has(String(g));
+  const isBranchCollapsed = (bid) => st.collapsedBranches.has(String(bid));
+  const isPersonCollapsed = (id) => st.collapsedPersons.has(String(id));
+
+  // 가지(12세 아들) 판별: fatherId 체인으로 "춘의 아들"까지 끌어올림
+  const idToNode = new Map(nodesRaw.map((n) => [String(n.id), n]));
+  const branchOf = (node) => {
+    if (!node) return "";
+    if (String(node.id) === String(root11.id)) return String(root11.id);
+    if (node.gen === 12 && String(node.fatherId) === String(root11.id)) return String(node.id);
+    let cur = node;
+    for (let guard = 0; guard < 50; guard++) {
+      const pid = String(cur.fatherId || "").trim();
+      if (!pid) return "";
+      const p = idToNode.get(pid);
+      if (!p) return "";
+      if (p.gen === 12 && String(p.fatherId) === String(root11.id)) return String(p.id);
+      cur = p;
+    }
+    return "";
+  };
+
+  // 접기 반영해서 "보이는 노드"만 다시 수집(BFS)
+  const visibleByGen = new Map();
+  gens.forEach((g) => visibleByGen.set(g, []));
+  visibleByGen.set(11, [root11]); // 11세는 춘만 고정
+
+  const seenV = new Set([String(root11.id)]);
+  const qv = [root11];
+  while (qv.length) {
+    const cur = qv.shift();
+    const cid = String(cur.id);
+    if (cid !== String(root11.id) && isPersonCollapsed(cid)) {
+      // 개인 접힘: 하위는 탐색하지 않음
+      continue;
+    }
+    const kids = childrenByFather.get(cid) || [];
+    kids.forEach((k) => {
+      const id = String(k.id);
+      if (seenV.has(id)) return;
+      seenV.add(id);
+      const g = Number(k.gen);
+      if (!Number.isFinite(g) || g < minGen || g > maxGen) {
+        qv.push(k);
+        return;
+      }
+      if (g === 11) return; // 11세는 춘만
+      if (isGenCollapsed(g)) return;
+      const bid = branchOf(k);
+      if (bid && bid !== String(root11.id) && isBranchCollapsed(bid)) return;
+      visibleByGen.get(g)?.push(k);
+      qv.push(k);
+    });
+  }
+  gens.forEach((g) => {
+    if (g === 11) return;
+    const arr = visibleByGen.get(g) || [];
+    arr.sort((a, b) => compareClanMemberIds(a.id, b.id));
+  });
+
+  // (표시용 예외) 형제 나란히 배치:
+  // - 18세: 영권을 영균 바로 아래로
+  // - 20세: 응운을 응세 바로 아래로
+  const reorderAfterByName = (gen, nameA, nameB) => {
+    const arr = visibleByGen.get(gen) || [];
+    if (arr.length < 2) return;
+    const nrm = (s) => String(s || "").replace(/\s+/g, "").trim();
+    const ia = arr.findIndex((x) => nrm(x.name) === nrm(nameA));
+    const ib = arr.findIndex((x) => nrm(x.name) === nrm(nameB));
+    if (ia < 0 || ib < 0) return;
+    if (ib === ia + 1) return; // already adjacent in desired order
+    const b = arr.splice(ib, 1)[0];
+    const newIa = arr.findIndex((x) => nrm(x.name) === nrm(nameA));
+    if (newIa < 0) return;
+    arr.splice(newIa + 1, 0, b);
+    visibleByGen.set(gen, arr);
+  };
+  reorderAfterByName(18, "영균", "영권");
+  reorderAfterByName(20, "응세", "응운");
+
+  // 12세 가지 목록(브랜치 접기용 버튼)
+  const branches12 = (childrenByFather.get(String(root11.id)) || [])
+    .filter((n) => Number(n.gen) === 12)
+    .slice()
+    .sort((a, b) => compareClanMemberIds(a.id, b.id));
+
+  // (요청) 12세 옥/윤/혁/연 가지별 고유 색상
+  const normName = (s) => String(s || "").replace(/\s+/g, "").trim();
+  const branchColorById = new Map(); // 12세(가지) id -> color
+  const colorForBranchName = (nm) => {
+    const t = normName(nm);
+    if (t.includes("옥")) return "#2563eb"; // blue-600
+    if (t.includes("윤")) return "#16a34a"; // green-600
+    if (t.includes("혁")) return "#dc2626"; // red-600
+    if (t.includes("연")) return "#7c3aed"; // violet-600
+    return "#334155"; // slate-700 (기타)
+  };
+  branches12.forEach((b) => branchColorById.set(String(b.id), colorForBranchName(b.name)));
+
+  const colorOfBranchId = (bid) => branchColorById.get(String(bid)) || "#334155";
+
+  // (중요) "작아 보이는" 문제 해결:
+  // - viewBox만 넓히면 요소 폭(100%)에 맞춰 자동 축소됨
+  // - 11-20세는 SVG 요소 자체를 가로로 길게 만들어(픽셀 폭) 스크롤로 보이게 한다.
+  const canvasW = Math.max(
+    PAD_L + PAD_R + gens.length * COL_W + (gens.length - 1) * COL_GAP,
+    widthHost
+  );
+  svg
+    .attr("viewBox", `0 0 ${canvasW} ${heightHost}`)
+    .attr("width", canvasW)
+    .attr("height", heightHost);
+  try {
+    svgEl.style.width = `${canvasW}px`;
+    svgEl.style.height = `${heightHost}px`;
+  } catch {
+    // ignore
+  }
+
+  // 세대 라벨(위) + 컬럼 박스(배치 기준)
+  const grid = svg.append("g").attr("aria-label", "세대 컬럼");
+  gens.forEach((g, idx) => {
+    const x = PAD_L + idx * (COL_W + COL_GAP);
+    grid.append("text")
+      .attr("x", x + COL_W / 2)
+      .attr("y", PAD_T + 12)
+      .attr("text-anchor", "middle")
+      .attr("font-size", 12)
+      .attr("font-weight", 900)
+      .attr("fill", "#0f172a")
+      .text(`${g}세`);
+    grid.append("rect")
+      .attr("x", x)
+      .attr("y", PAD_T + 22)
+      .attr("width", COL_W)
+      .attr("height", heightHost - PAD_T - PAD_B - 22)
+      .attr("rx", 12)
+      .attr("fill", "rgba(15,23,42,0.02)")
+      .attr("stroke", "rgba(15,23,42,0.10)");
+  });
+
+  // 위치 계산(세로 꽉 차게)
+  const colTop = PAD_T + HEADER_H + 18;
+  const colBottom = heightHost - PAD_B - 18;
+  // (요청) 세대 내 이름 위치(세로 간격) 7% 축소
+  const colMid = (colTop + colBottom) / 2;
+  const colHalf = ((colBottom - colTop) / 2) * 0.93;
+  const colTopTight = colMid - colHalf;
+  const colBottomTight = colMid + colHalf;
+  const idToPos = new Map(); // id -> {x,y}
+
+  gens.forEach((g, idx) => {
+    const x0 = PAD_L + idx * (COL_W + COL_GAP);
+    const cx = x0 + COL_W / 2;
+    const list = visibleByGen.get(g) || (g === 11 ? [root11] : []);
+    const n = list.length;
+    if (!n) return;
+    if (n === 1) {
+      idToPos.set(String(list[0].id), { x: cx, y: (colTopTight + colBottomTight) / 2 });
+      return;
+    }
+    const step = (colBottomTight - colTopTight) / (n - 1);
+    list.forEach((it, i) => {
+      idToPos.set(String(it.id), { x: cx, y: colTopTight + step * i });
+    });
+  });
+
+  // ---- 표시 예외(교차 최소화/형제 정렬/선 단순화) ----
+  // 1) "연의 여1"은 "회보" 위(바로 위)로: 같은 세대 목록 내 순서 조정
+  // 2) "을보"의 아들 "사": 부자 연결선이 교차하지 않게 child y를 father y에 최대한 맞춤
+  // 3) "흠조"의 아들 "윤석": 위와 동일
+  // 4) "영권"의 아들 "난": 난을 영권 우측(x+)으로 보내 선을 단순화
+  const nrmName = (s) => String(s || "").replace(/\s+/g, "").trim();
+  const findNodeIdByName = (name) => {
+    const t = nrmName(name);
+    if (!t) return "";
+    // visibleByGen을 우선(현재 화면에 보이는 인물)
+    for (const g of gens) {
+      const arr = visibleByGen.get(g) || [];
+      const hit = arr.find((x) => nrmName(x.name) === t);
+      if (hit) return String(hit.id);
+    }
+    // fallback: 전체 범위
+    const hit2 = nodesInRange.find((x) => nrmName(x.name) === t);
+    return hit2 ? String(hit2.id) : "";
+  };
+
+  const moveAboveByName = (nameA, nameB) => {
+    const a = nrmName(nameA);
+    const b = nrmName(nameB);
+    if (!a || !b) return;
+    for (const g of gens) {
+      const arr = visibleByGen.get(g) || [];
+      const ia = arr.findIndex((x) => nrmName(x.name) === a);
+      const ib = arr.findIndex((x) => nrmName(x.name) === b);
+      if (ia < 0 || ib < 0) continue;
+      if (ia === ib - 1) return; // already right above
+      const nodeA = arr.splice(ia, 1)[0];
+      const ib2 = arr.findIndex((x) => nrmName(x.name) === b);
+      if (ib2 < 0) return;
+      arr.splice(Math.max(0, ib2), 0, nodeA);
+      visibleByGen.set(g, arr);
+      return;
+    }
+  };
+
+  const nudgeUniqueY = (gen, wantY) => {
+    // 같은 세대에서 y 충돌을 피하기 위한 미세 이동
+    const arr = visibleByGen.get(gen) || [];
+    const used = new Set(
+      arr.map((n) => idToPos.get(String(n.id))?.y).filter((v) => typeof v === "number")
+        .map((v) => Math.round(v))
+    );
+    let y = Number(wantY);
+    let guard = 0;
+    while (used.has(Math.round(y)) && guard < 40) {
+      y += 12;
+      if (y > colBottomTight) y = colTopTight + 6 * (guard % 3);
+      guard += 1;
+    }
+    return Math.max(colTopTight, Math.min(colBottomTight, y));
+  };
+
+  const alignChildToFatherByName = (fatherName, childName) => {
+    const fid = findNodeIdByName(fatherName);
+    const cid = findNodeIdByName(childName);
+    if (!fid || !cid) return;
+    const fp = idToPos.get(fid);
+    const cp = idToPos.get(cid);
+    if (!fp || !cp) return;
+    const child = idToNode.get(cid);
+    const gen = child?.gen;
+    if (typeof gen !== "number") return;
+    const y2 = nudgeUniqueY(gen, fp.y);
+    idToPos.set(cid, { x: cp.x, y: y2 });
+  };
+
+  const xOffsetById = new Map(); // id -> dx
+  const shiftRightOfByName = (childName, fatherName) => {
+    const cid = findNodeIdByName(childName);
+    const fid = findNodeIdByName(fatherName);
+    if (!cid || !fid) return;
+    const fp = idToPos.get(fid);
+    const cp = idToPos.get(cid);
+    if (!fp || !cp) return;
+    // 같은 세대 컬럼의 중심 x에서 조금 우측으로
+    xOffsetById.set(cid, Math.round(COL_W * 0.32));
+    // y도 father에 약간 맞춤(선 단순화)
+    const child = idToNode.get(cid);
+    const gen = child?.gen;
+    if (typeof gen === "number") {
+      const y2 = nudgeUniqueY(gen, fp.y);
+      idToPos.set(cid, { x: cp.x, y: y2 });
+    }
+  };
+
+  // 1) 형제 정렬
+  moveAboveByName("여1", "회보");
+  // 정렬을 바꿨으니, 해당 세대는 y를 재분배(해당 세대만 다시)
+  // (전체를 다시 계산하면 비용이 커서, 필요한 세대만 재배치)
+  const maybeReflowGenByNames = (nameA, nameB) => {
+    const a = nrmName(nameA);
+    const b = nrmName(nameB);
+    for (const g of gens) {
+      const arr = visibleByGen.get(g) || [];
+      if (!arr.some((x) => nrmName(x.name) === a) || !arr.some((x) => nrmName(x.name) === b)) continue;
+      const idx = gens.indexOf(g);
+      if (idx < 0) return;
+      const x0 = PAD_L + idx * (COL_W + COL_GAP);
+      const cx = x0 + COL_W / 2;
+      const n = arr.length;
+      if (!n) return;
+      if (n === 1) {
+        idToPos.set(String(arr[0].id), { x: cx, y: (colTopTight + colBottomTight) / 2 });
+        return;
+      }
+      const step = (colBottomTight - colTopTight) / (n - 1);
+      arr.forEach((it, i) => {
+        idToPos.set(String(it.id), { x: cx, y: colTopTight + step * i });
+      });
+      return;
+    }
+  };
+  maybeReflowGenByNames("여1", "회보");
+
+  // 2) 교차 방지(부자 y 정렬)
+  alignChildToFatherByName("을보", "사");
+  alignChildToFatherByName("흠조", "윤석");
+
+  // 3) 선 단순화(난을 영권 우측)
+  shiftRightOfByName("난", "영권");
+
+  // 막대선 연결(부→자): 스파인+가로바 형태
+  const linkG = svg.append("g").attr("aria-label", "후손 연결선");
+  const LINK_W = 6 * 0.9; // 굵기 10% 감소
+  const OP_MAIN = 0.35 * 0.9; // 진하기 10% 감소
+  const OP_SPINE = 0.26 * 0.9;
+  const drawBarConnector = (px, py, childPoints, color) => {
+    if (!childPoints.length) return;
+    const xSpine = px + (COL_W + COL_GAP) / 2 - 10;
+    const ys = childPoints.map((p) => p.y).sort((a, b) => a - b);
+    const y1 = ys[0];
+    const y2 = ys[ys.length - 1];
+    const stroke = String(color || "rgba(15,23,42,0.22)");
+    const soft = stroke.startsWith("rgba") ? stroke : stroke;
+    // parent -> spine
+    linkG.append("line")
+      .attr("x1", px + R)
+      .attr("y1", py)
+      .attr("x2", xSpine)
+      .attr("y2", py)
+      .attr("stroke", soft)
+      .attr("stroke-opacity", stroke.startsWith("rgba") ? 1 : OP_MAIN)
+      .attr("stroke-width", LINK_W)
+      .attr("stroke-linecap", "round");
+    // spine
+    linkG.append("line")
+      .attr("x1", xSpine)
+      .attr("y1", Math.min(py, y1))
+      .attr("x2", xSpine)
+      .attr("y2", Math.max(py, y2))
+      .attr("stroke", soft)
+      .attr("stroke-opacity", stroke.startsWith("rgba") ? 1 : OP_SPINE)
+      .attr("stroke-width", LINK_W)
+      .attr("stroke-linecap", "round");
+    // spine -> each child
+    childPoints.forEach((cp) => {
+      linkG.append("line")
+        .attr("x1", xSpine)
+        .attr("y1", cp.y)
+        .attr("x2", cp.x - R)
+        .attr("y2", cp.y)
+        .attr("stroke", soft)
+        .attr("stroke-opacity", stroke.startsWith("rgba") ? 1 : OP_MAIN)
+        .attr("stroke-width", LINK_W)
+        .attr("stroke-linecap", "round");
+    });
+  };
+
+  // 부모별로 보이는 자식 연결 그리기
+  const visibleIds = new Set([...idToPos.keys()].map(String));
+  [...visibleIds].forEach((pid) => {
+    const ppos = idToPos.get(pid);
+    if (!ppos) return;
+    const kids = childrenByFather.get(pid) || [];
+    const visibleKids = kids.filter((k) => visibleIds.has(String(k.id)));
+    const childPoints = visibleKids.map((k) => idToPos.get(String(k.id))).filter(Boolean);
+    if (!childPoints.length) return;
+
+    // 연결선 색상: "자식이 속한 12세 가지" 색상(단, 11세→12세는 그 12세 본인 색)
+    const firstKid = visibleKids[0];
+    const bid = branchOf(firstKid);
+    const color = bid && bid !== String(root11.id) ? colorOfBranchId(bid) : "rgba(15,23,42,0.22)";
+    drawBarConnector(ppos.x, ppos.y, childPoints, color);
+  });
+
+  // 노드 렌더(클릭: 개인 접기/펼치기)
+  const nodeG = svg.append("g").attr("aria-label", "인물 배치");
+  gens.forEach((g, idx) => {
+    const list = visibleByGen.get(g) || (g === 11 ? [root11] : []);
+    list.forEach((n) => {
+      const pos = idToPos.get(String(n.id));
+      if (!pos) return;
+      const dx = Number(xOffsetById.get(String(n.id)) || 0);
+      const cx = pos.x + dx;
+      const cy = pos.y;
+      const nm = String(n.name || "").trim();
+      const ex = String(n.extra || "").trim();
+      const nmShort = nm.length > 6 ? `${nm.slice(0, 6)}…` : nm;
+
+      const isCollapsed = isPersonCollapsed(String(n.id));
+      const bid = branchOf(n);
+      const nodeStroke =
+        g === 11
+          ? "#0f172a"
+          : (bid && bid !== String(root11.id) ? colorOfBranchId(bid) : "rgba(15,23,42,0.35)");
+      const gNode = nodeG.append("g")
+        .attr("transform", `translate(${cx},${cy})`)
+        .style("cursor", g === 11 ? "default" : "pointer")
+        .on("click", () => {
+          if (g === 11) return;
+          const key = String(n.id);
+          if (st.collapsedPersons.has(key)) st.collapsedPersons.delete(key);
+          else st.collapsedPersons.add(key);
+          paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl);
+        });
+      gNode.append("circle")
+        .attr("r", R)
+        .attr("fill", isCollapsed ? "rgba(15,23,42,0.06)" : "rgba(255,255,255,0.92)")
+        .attr("stroke", nodeStroke)
+        .attr("stroke-width", g === 11 ? 2 : 1.7);
+      gNode.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dy", "0.35em")
+        .attr("font-size", 11.5)
+        .attr("font-weight", 900)
+        .attr("fill", g === 11 ? "#0f172a" : "rgba(15,23,42,0.9)")
+        .text(nmShort || String(n.id));
+
+      if (ex) {
+        const exShort = ex.length > 14 ? `${ex.slice(0, 14)}…` : ex;
+        gNode.append("text")
+          .attr("text-anchor", "middle")
+          .attr("y", R + 14)
+          .attr("font-size", 10)
+          .attr("font-weight", 800)
+          .attr("fill", "rgba(15,23,42,0.62)")
+          .text(exShort);
+      }
+    });
+  });
+}
+
 async function updateTreeView() {
   const svgEl = document.getElementById("tree-svg");
   const wrap = document.getElementById("tree-svg-wrap");
@@ -4814,7 +5359,7 @@ async function updateTreeView() {
       .text("홈에서 세보를 검색한 뒤 기준 인물을 선택하세요.");
     if (hint) hint.textContent = "";
     // 검색이 없어도 genRange(서버)로 그릴 수 있으면 그린다
-    if (treeViewMode === "genrange" && treeGenFilter) {
+    if ((treeViewMode === "genrange_1_10" || treeViewMode === "genrange_11_20") && treeGenFilter) {
       let people = null;
       try {
         people = await fetchGenRangePeople(treeGenFilter.min, treeGenFilter.max);
@@ -4823,14 +5368,19 @@ async function updateTreeView() {
       }
       if (people && people.length) {
         if (hint) hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
-        paintGenRangeHorizontalScrollTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
+        if (treeViewMode === "genrange_11_20") {
+          paintGenRange11to20TimelineTree(people, 11, 20, wrap, svgEl);
+        } else {
+          // 1-10세 전용 렌더러(건드리지 않음)
+          paintGenRangeHorizontalScrollTree(people, 1, 10, wrap, svgEl);
+        }
         return;
       }
     }
     return;
   }
 
-  if (treeViewMode === "genrange" && treeGenFilter) {
+  if ((treeViewMode === "genrange_1_10" || treeViewMode === "genrange_11_20") && treeGenFilter) {
     if (hint) hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
     // 서버 genRange가 있으면 사용, 없으면 현재 검색 결과에서만 구성
     let people = await fetchGenRangePeople(treeGenFilter.min, treeGenFilter.max);
@@ -4844,10 +5394,19 @@ async function updateTreeView() {
         .attr("text-anchor", "middle")
         .attr("fill", "#78716c")
         .attr("font-size", 12.5)
-        .text("1-10세 트리를 그릴 데이터가 없습니다. 서버에 action=genRange(min,max)를 추가해 주세요.");
+        .text(
+          treeViewMode === "genrange_11_20"
+            ? "11-20세 트리를 그릴 데이터가 없습니다. 서버에 action=genRange(min,max)를 추가해 주세요."
+            : "1-10세 트리를 그릴 데이터가 없습니다. 서버에 action=genRange(min,max)를 추가해 주세요."
+        );
       return;
     }
-    paintGenRangeHorizontalScrollTree(people, treeGenFilter.min, treeGenFilter.max, wrap, svgEl);
+    if (treeViewMode === "genrange_11_20") {
+      paintGenRange11to20TimelineTree(people, 11, 20, wrap, svgEl);
+    } else {
+      // 1-10세 전용 렌더러(건드리지 않음)
+      paintGenRangeHorizontalScrollTree(people, 1, 10, wrap, svgEl);
+    }
     // 전체를 한 번에 그리므로 스크롤 중 재렌더는 하지 않는다(깜빡임/속도 저하 방지).
     return;
   }
