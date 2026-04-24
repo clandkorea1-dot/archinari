@@ -96,6 +96,17 @@
   transform: translateY(1px);
 }
 
+/* 21-31세 전용 화면: 상단 "가계도" 제목 제거 + 헤더와 간격 축소 */
+#view-tree.gen21-tight {
+  margin-top: -8px;
+}
+#view-tree.gen21-tight > header {
+  display: none;
+}
+#view-tree.gen21-tight .rounded-2xl {
+  padding-top: 12px;
+}
+
 /* 신문풍 타이포(미세 조정) */
 html {
   text-rendering: geometricPrecision;

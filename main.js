@@ -5648,8 +5648,13 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
 function toggleGen21UI(on) {
   const baseWrap = document.getElementById("tree-svg-wrap");
   const gen21Wrap = document.getElementById("tree-gen21-wrap");
+  const titleHeader = document.getElementById("tree-title-header");
+  const viewTree = document.getElementById("view-tree");
   if (baseWrap) baseWrap.classList.toggle("hidden", !!on);
   if (gen21Wrap) gen21Wrap.classList.toggle("hidden", !on);
+  if (titleHeader) titleHeader.classList.toggle("hidden", !!on);
+  // (요청) 21-31 전용 화면은 헤더(상단 탭/서브메뉴)와 더 가깝게 보이도록 여백을 줄인다.
+  if (viewTree) viewTree.classList.toggle("gen21-tight", !!on);
 }
 
 /**
@@ -6015,8 +6020,487 @@ function paintTreeLikeEightKinRenderer(rows, rootId, wrap, svgEl) {
   paintD3TreeLayout(root, rid, wrap, svgEl, false);
 }
 
+function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
+  if (!svgEl || typeof d3 === "undefined") return;
+  const {
+    rows,
+    rootId,
+    rootGen,
+    minGen,
+    maxGen,
+    titleLeft = "",
+    titleRight = "",
+  } = opts || {};
+
+  const list = Array.isArray(rows) ? rows : [];
+  const rid = String(rootId || "").trim();
+
+  const svg = d3.select(svgEl);
+  svg.on(".zoom", null);
+  svg.selectAll("*").remove();
+
+  // 기존 8촌과 동일: 드래그/휠 줌
+  const gRoot = svg.append("g").attr("class", "eight-kin-zoom-layer");
+  const gEdge = gRoot.append("g").attr("aria-label", "연결선");
+  const gNode = gRoot.append("g").attr("aria-label", "인물");
+
+  const zoom = d3
+    .zoom()
+    .scaleExtent([0.12, 6])
+    .on("zoom", (event) => {
+      gRoot.attr("transform", event.transform.toString());
+    });
+  svg.call(zoom);
+  svg.on("dblclick.zoom", null);
+
+  svgEl.__treeZoom = { kind: "eightKinLike", scale: 1 };
+  // 외부(툴바)에서 확대/축소/원위치 제어할 수 있도록 보관
+  svgEl.__eightKinLikeZoom = { zoom, svg, gRoot };
+
+  // (중요) 하단 SVG가 컨테이너 높이를 못 받아 "작게(좌상단)" 보이는 케이스 방지:
+  // SVG에 픽셀 높이를 부여해 실제 렌더링 영역을 확보한다.
+  // (min-height만 있는 컨테이너에서는 height:100%가 0으로 계산되는 경우가 있음)
+  try {
+    const wrapEl = svgEl.parentElement;
+    const h = Math.max(360, wrapEl?.clientHeight || 0);
+    if (h > 0) {
+      svgEl.setAttribute("height", String(h));
+      svgEl.style.height = `${h}px`;
+    }
+    svgEl.setAttribute("width", "100%");
+    svgEl.style.width = "100%";
+  } catch {
+    // ignore
+  }
+
+  if (!rid || !list.length) {
+    svg
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 12.5)
+      .text("표시할 데이터가 없습니다.");
+    return;
+  }
+
+  const COL_W = 116; // 기본 열 간격(약간 넉넉)
+  const COL_W_TIGHT = Math.round(COL_W * 0.8); // 20% 축소(29-31 구간 등)
+  const COL_W_MID = Math.round(COL_W * 0.84); // (요청) 25-29 구간 16% 축소
+  const PAD_T = 34;
+  const ROW_H = 30;
+  const MIN_DY = 20;
+  const GROUP_GAP = 18;
+  const FONT_MAIN = 12.5;
+  const FONT_CAP = 10;
+  const ROOT_FONT_BOOST = 2.5;
+
+  /** @type {Map<string, { id: string, name: string, gen: number|null, col: number, fatherId: string, x: number, y: number, w: number, h: number }>} */
+  const byId = new Map();
+  const normalizeRow = (r) => ({
+    id: String(r.id || "").trim(),
+    name: String(r.name || r.id || "").trim(),
+    parentId: String(r.parentId || "").trim(),
+    gen: typeof r.gen === "number" ? r.gen : null,
+  });
+
+  const rootGenNum = Number.isFinite(Number(rootGen)) ? Number(rootGen) : null;
+  const gMin = Number.isFinite(Number(minGen)) ? Number(minGen) : null;
+  const gMax = Number.isFinite(Number(maxGen)) ? Number(maxGen) : null;
+
+  list.forEach((r) => {
+    const rr = normalizeRow(r);
+    if (!rr.id) return;
+    const g = rr.gen != null ? Number(rr.gen) : null;
+    const col =
+      rootGenNum != null && g != null && Number.isFinite(g)
+        ? Math.max(0, g - rootGenNum)
+        : 0;
+    if (!byId.has(rr.id)) {
+      byId.set(rr.id, {
+        id: rr.id,
+        name: rr.name || rr.id,
+        gen: g,
+        col,
+        // (요청) 루트(25세 시조)의 부친은 연결하지 않는다.
+        fatherId: rr.id === rid ? "" : rr.parentId,
+        x: 0,
+        y: 0,
+        w: 0,
+        h: ROW_H,
+      });
+    }
+  });
+
+  // father 노드가 목록에 없으면 임시 노드로 보강(연결선 유지)
+  const ensureFatherStubs = () => {
+    const toAdd = [];
+    byId.forEach((n) => {
+      const fid = String(n.fatherId || "").trim();
+      if (!fid) return;
+      if (byId.has(fid)) return;
+      const nm = nameFromCachesById(fid) || fid;
+      const col = Math.max(0, n.col - 1);
+      toAdd.push({ id: fid, name: nm, col });
+    });
+    toAdd.forEach((x) => {
+      if (byId.has(x.id)) return;
+      byId.set(x.id, {
+        id: x.id,
+        name: x.name,
+        gen: null,
+        col: x.col,
+        fatherId: "",
+        x: 0,
+        y: 0,
+        w: 0,
+        h: ROW_H,
+      });
+    });
+    return toAdd.length;
+  };
+  ensureFatherStubs();
+
+  // col 재계산(루트 gen 기반이 아닌 stub 포함 최대 col)
+  const maxCol = Math.max(0, ...[...byId.values()].map((n) => n.col));
+
+  // (요청) 25세(루트)가 화면 폭 중앙 근처에 오도록 좌/우 패딩을 넉넉히 준다.
+  const SIDE_PAD = Math.max(32, (maxCol * COL_W) / 2 + 32);
+
+  // col 간격(센터-센터 간 거리)을 가변으로:
+  // - 0→1(25→26), 1→2(26→27), 2→3(27→28),
+  // - 3→4(28→29)까지는 16% 축소(보기 좋게),
+  // - 4→5(29→30), 5→6(30→31)은 20% 축소(기존 요청 유지)
+  const stepBetweenCols = (fromCol) => {
+    if (fromCol >= 0 && fromCol <= 3) return COL_W_MID; // 25→29
+    if (fromCol >= 4 && fromCol <= 5) return COL_W_TIGHT; // 29→31
+    return COL_W;
+  };
+  const colCenterX = (c) => {
+    let x = SIDE_PAD + COL_W / 2;
+    for (let i = 0; i < c; i++) x += stepBetweenCols(i);
+    return x;
+  };
+  let totalW = SIDE_PAD * 2 + COL_W;
+  for (let i = 0; i < maxCol; i++) totalW += stepBetweenCols(i);
+
+  const byCol = new Map();
+  for (let c = 0; c <= maxCol; c++) byCol.set(c, []);
+  byId.forEach((n) => {
+    if (!byCol.has(n.col)) byCol.set(n.col, []);
+    byCol.get(n.col).push(n);
+  });
+
+  // 8촌과 동일: 각 열 정렬(부친 id → 자녀 id)
+  byCol.forEach((arr) => {
+    arr.sort((a, b) => {
+      const aHas = !!a.fatherId;
+      const bHas = !!b.fatherId;
+      if (aHas !== bHas) return aHas ? -1 : 1;
+      if (aHas && bHas) {
+        const cf = compareClanMemberIds(a.fatherId, b.fatherId);
+        if (cf !== 0) return cf;
+      }
+      // 루트는 항상 맨 위로
+      if (a.id === rid) return -1;
+      if (b.id === rid) return 1;
+      return compareClanMemberIds(a.id, b.id);
+    });
+  });
+
+  const layoutCol = (c) => {
+    const arr = byCol.get(c) || [];
+    arr.forEach((n) => {
+      n.w = Math.min(220, Math.max(36, n.name.length * FONT_MAIN * 0.52 + 10));
+      n.x = colCenterX(c);
+    });
+
+    const groups = new Map(); // key -> nodes[]
+    arr.forEach((n) => {
+      const key = n.fatherId ? `F:${n.fatherId}` : `S:${n.id}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(n);
+    });
+
+    const fatherY = (fid) => {
+      const p = byId.get(String(fid));
+      return p && Number.isFinite(p.y) ? p.y : Infinity;
+    };
+
+    const orderedKeys = [...groups.keys()].sort((a, b) => {
+      const fa = a.startsWith("F:") ? a.slice(2) : "";
+      const fb = b.startsWith("F:") ? b.slice(2) : "";
+      if (fa && fb) {
+        const ya = fatherY(fa);
+        const yb = fatherY(fb);
+        if (ya !== Infinity || yb !== Infinity) {
+          if (ya === Infinity) return 1;
+          if (yb === Infinity) return -1;
+          if (ya !== yb) return ya - yb;
+        }
+        return compareClanMemberIds(fa, fb);
+      }
+      if (fa) return -1;
+      if (fb) return 1;
+      return a.localeCompare(b, "en");
+    });
+
+    let y = PAD_T + 34;
+    orderedKeys.forEach((k) => {
+      const nodes = groups.get(k) || [];
+      const inner = Math.max(ROW_H, Math.max(0, nodes.length - 1) * MIN_DY);
+      const pad = Math.max(10, Math.min(22, nodes.length * 3));
+      const blockH = inner + pad * 2;
+
+      const step = nodes.length > 1 ? Math.max(MIN_DY, inner / (nodes.length - 1)) : 0;
+      const y0 = y + pad;
+      nodes
+        .slice()
+        .sort((a, b) => compareClanMemberIds(a.id, b.id))
+        .forEach((n, i) => {
+          n.y = nodes.length === 1 ? y + pad + inner / 2 : y0 + i * step;
+        });
+
+      y += blockH + GROUP_GAP;
+    });
+
+    return y;
+  };
+
+  let maxY = 0;
+  for (let c = 0; c <= maxCol; c++) maxY = Math.max(maxY, layoutCol(c));
+
+  // "가장 큰 span" 기준으로 센터 정렬(8촌과 동일)
+  const colSpans = [];
+  for (let c = 0; c <= maxCol; c++) {
+    const arr = byCol.get(c) || [];
+    const ys = arr.map((n) => n.y).filter((y) => Number.isFinite(y));
+    if (!ys.length) continue;
+    const minY = Math.min(...ys);
+    const maxYc = Math.max(...ys);
+    colSpans.push({ c, minY, maxY: maxYc, span: maxYc - minY });
+  }
+  if (colSpans.length) {
+    colSpans.sort((a, b) => b.span - a.span);
+    const ref = colSpans[0];
+    const refMid = (ref.minY + ref.maxY) / 2;
+    colSpans.forEach((s) => {
+      if (s.c === ref.c) return;
+      const mid = (s.minY + s.maxY) / 2;
+      const delta = refMid - mid;
+      (byCol.get(s.c) || []).forEach((n) => {
+        n.y += delta;
+      });
+    });
+  }
+
+  // gen 캡션(세대 라벨)
+  for (let c = 0; c <= maxCol; c++) {
+    const cap = gNode.append("text");
+    cap
+      .attr("x", colCenterX(c))
+      .attr("y", PAD_T)
+      .attr("text-anchor", "middle")
+      .attr("font-size", FONT_CAP)
+      .attr("fill", "#0f172a")
+      .attr("font-weight", 800)
+      .attr("font-family", "Noto Sans KR, Pretendard, sans-serif")
+      .attr("data-gen-col", String(c))
+      .text(() => {
+        if (c === 0) return titleLeft || "선조(25세)";
+        if (rootGenNum != null) return `${rootGenNum + c}세손`;
+        return `${c}열`;
+      });
+  }
+
+  // 텍스트(이름)
+  byId.forEach((n) => {
+    // 표시 범위 밖 세대는 숨김(Stub은 gen=null이라 표시 허용)
+    if (n.gen != null && gMin != null && n.gen < gMin) return;
+    if (n.gen != null && gMax != null && n.gen > gMax) return;
+
+    const isRoot = n.id === rid;
+    const te = gNode.append("text");
+    te
+      .attr("x", n.x - n.w / 2)
+      .attr("y", n.y)
+      .attr("text-anchor", "start")
+      .attr("dominant-baseline", "middle")
+      .attr("font-size", isRoot ? FONT_MAIN + ROOT_FONT_BOOST : FONT_MAIN)
+      .attr("font-weight", isRoot ? "700" : "500")
+      .attr("fill", isRoot ? "#166534" : "#1c1917")
+      .attr("font-family", "Noto Sans KR, Pretendard, sans-serif")
+      .text(n.name || n.id);
+  });
+
+  // 연결선: 같은 아버지의 자녀를 곡선 + 점 + 세로선으로 묶기(8촌과 동일)
+  const childrenByFather = new Map();
+  byId.forEach((n) => {
+    const fid = String(n.fatherId || "").trim();
+    if (!fid) return;
+    if (!byId.has(fid)) return;
+    if (!childrenByFather.has(fid)) childrenByFather.set(fid, []);
+    childrenByFather.get(fid).push(n);
+  });
+
+  childrenByFather.forEach((kids, fid) => {
+    const p = byId.get(fid);
+    if (!p || !kids.length) return;
+    kids.sort((a, b) => compareClanMemberIds(a.id, b.id));
+
+    const minYk = Math.min(...kids.map((k) => k.y));
+    const maxYk = Math.max(...kids.map((k) => k.y));
+    const yMid = (minYk + maxYk) / 2;
+
+    const xTextLeftMin = Math.min(...kids.map((k) => k.x - k.w / 2));
+    const xDot = xTextLeftMin - 12;
+
+    // 아버지 → 형제묶음 가운데로 곡선 연결(녹색)
+    const xFrom = p.x + p.w / 2 + 6;
+    const bend = Math.max(22, Math.min(72, (xDot - xFrom) * 0.55));
+    gEdge
+      .append("path")
+      .attr(
+        "d",
+        `M${xFrom},${p.y} C${xFrom + bend},${p.y} ${xDot - bend},${yMid} ${xDot},${yMid}`
+      )
+      .attr("fill", "none")
+      .attr("stroke", EIGHT_KIN_EDGE)
+      .attr("stroke-width", 1.1)
+      .attr("stroke-linecap", "round")
+      .attr("stroke-linejoin", "round")
+      .attr("opacity", 0.92);
+
+    // 자녀 점(•)
+    kids.forEach((ch) => {
+      gEdge
+        .append("circle")
+        .attr("cx", xDot)
+        .attr("cy", ch.y)
+        .attr("r", 1.8)
+        .attr("fill", EIGHT_KIN_EDGE)
+        .attr("opacity", 0.95);
+    });
+
+    // 형제 세로 직선 연결
+    if (kids.length >= 2) {
+      gEdge
+        .append("path")
+        .attr("d", `M${xDot},${minYk} L${xDot},${maxYk}`)
+        .attr("fill", "none")
+        .attr("stroke", EIGHT_KIN_EDGE_SOFT)
+        .attr("stroke-width", 0.85)
+        .attr("stroke-linecap", "round")
+        .attr("opacity", 0.45);
+    }
+  });
+
+  const totalH = Math.max(260, maxY + PAD_T + 40);
+  svg
+    .attr("viewBox", `0 0 ${totalW} ${totalH}`)
+    .attr("width", "100%")
+    .attr("height", "100%")
+    .style("cursor", "grab")
+    .style("touch-action", "none");
+
+  if (titleRight) {
+    gNode
+      .append("text")
+      .attr("x", totalW - 8)
+      .attr("y", PAD_T)
+      .attr("text-anchor", "end")
+      .attr("font-size", FONT_CAP)
+      .attr("fill", "#a8a29e")
+      .attr("font-family", "Noto Sans KR, Pretendard, sans-serif")
+      .text(titleRight);
+  }
+
+  // (요청) 하단 영역에 트리가 "상단 일부에만" 보이는 문제 해결:
+  // 그린 뒤 콘텐츠 bbox를 기준으로 자동 "화면 맞춤"(센터+스케일)을 적용한다.
+  // 추가 요청: **Y축(세로 높이)** 을 우선으로 채우도록 스케일을 잡는다.
+  // 추가 요청: 초기 화면은 약 93% 높이에 맞춘다.
+  // 사용자는 휠/드래그로 다시 조정 가능.
+  const fitLastGenToRight = () => {
+    try {
+      const rect = svgEl.getBoundingClientRect?.();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
+      const lastCol = maxCol;
+      const lastNodes = (byCol.get(lastCol) || []).filter((n) => Number.isFinite(n.y));
+      const ys = lastNodes.map((n) => n.y);
+      const minY = ys.length ? Math.min(...ys) : PAD_T;
+      const maxYc = ys.length ? Math.max(...ys) : PAD_T + 200;
+      const colH = Math.max(40, maxYc - minY);
+
+      // (요청) 31세 명단이 세로 93%를 채우도록
+      const pad = 18;
+      const scale = Math.min(6, Math.max(0.12, ((rect.height - pad * 2) / colH) * 0.93));
+
+      // (요청) "31세손" 라벨 텍스트가 정확히 우측 상단에 오게(bbox 기준)
+      const labelNode = gNode.select(`text[data-gen-col="${String(lastCol)}"]`).node();
+      const lb = labelNode && labelNode.getBBox ? labelNode.getBBox() : null;
+      const rightX = lb ? lb.x + lb.width : colCenterX(lastCol);
+      const topY = lb ? lb.y : PAD_T;
+      const tx = rect.width - pad - rightX * scale;
+      const ty = pad - topY * scale;
+
+      svg
+        .transition()
+        .duration(0)
+        .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+    } catch {
+      // ignore
+    }
+  };
+
+  // 맞춤 기능을 외부 툴바에서 호출할 수 있게 노출
+  svgEl.__eightKinLikeFit = { fitLastGenToRight };
+
+  // (요청) 25세 선택 직후 첫 렌더링은 "맞춤" 상태여야 함
+  fitLastGenToRight();
+}
+
+function ensureGen21BottomZoomToolbar(bottomWrap, bottomSvg) {
+  if (!bottomWrap || !bottomSvg) return;
+  const existing = bottomWrap.querySelector?.("[data-gen21-bottom-toolbar='1']");
+  // 재렌더링/초기화 후 버튼이 "안 먹는" 문제 방지: 항상 새로 만들어 이벤트를 재바인딩한다.
+  if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
+
+  const bar = document.createElement("div");
+  bar.setAttribute("data-gen21-bottom-toolbar", "1");
+  bar.className = "tree-zoom-mini";
+  bar.innerHTML = `
+    <button type="button" class="tree-zoom-mini-btn" data-act="out" aria-label="축소">－</button>
+    <button type="button" class="tree-zoom-mini-btn" data-act="fit" aria-label="맞춤">맞춤</button>
+    <button type="button" class="tree-zoom-mini-btn" data-act="in" aria-label="확대">＋</button>
+  `;
+  bottomWrap.appendChild(bar);
+
+  const hook = () => {
+    const ref = bottomSvg.__eightKinLikeZoom;
+    if (!ref || !ref.zoom || !ref.svg) return false;
+    const { zoom, svg } = ref;
+    bar.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const act = btn.getAttribute("data-act");
+        if (act === "in") svg.transition().duration(180).call(zoom.scaleBy, 1.28);
+        else if (act === "out") svg.transition().duration(180).call(zoom.scaleBy, 1 / 1.28);
+        else if (act === "fit") {
+          const fit = bottomSvg.__eightKinLikeFit?.fitLastGenToRight;
+          if (typeof fit === "function") fit();
+        }
+      });
+    });
+    return true;
+  };
+
+  // 렌더 직후 바로 연결 시도, 실패하면 다음 tick에서 재시도
+  if (!hook()) setTimeout(hook, 0);
+}
+
 function paintGenRange21to31DescEightRule(rootId, people, minGen, maxGen, wrap, svgEl) {
-  // (중요) 21-31세 하단 렌더링 규칙은 "8촌 친척 트리 구현 방식"을 그대로 사용한다.
+  // (중요) 21-31세 하단 렌더링 규칙은 "홈 8촌 찾기"와 동일한 가로 배치 규칙을 사용한다.
   const rid = String(rootId || "").trim();
   const svg = d3.select(svgEl);
   svg.on(".zoom", null);
@@ -6100,7 +6584,8 @@ function paintGenRange21to31DescEightRule(rootId, people, minGen, maxGen, wrap, 
   const rows = [...keep.values()]
     .map((n) => ({
       id: String(n.id),
-      parentId: String(n.fatherId || "").trim(),
+      // (요청) 루트(25세 시조)의 부친은 연결하지 않는다.
+      parentId: String(n.id) === String(rid) ? "" : String(n.fatherId || "").trim(),
       name: String(n.name || n.id).trim(),
       row: n.row,
     }))
@@ -6125,7 +6610,25 @@ function paintGenRange21to31DescEightRule(rootId, people, minGen, maxGen, wrap, 
     return;
   }
 
-  paintTreeLikeEightKinRenderer(rows, rid, wrap, svgEl);
+  paintEightKinHorizontalTreeIntoSvg(svgEl, {
+    rows: rows.map((r) => {
+      // gen/parentId/name를 보강해서 "세대 → 열" 배치가 정확히 되게 한다.
+      const g = readNodeGenLike(r.row);
+      return {
+        ...r,
+        gen: typeof g === "number" ? g : null,
+      };
+    }),
+    rootId: rid,
+    rootGen: root.gen,
+    minGen,
+    maxGen,
+    titleLeft: "선조(25세)",
+    titleRight: "",
+  });
+
+  // (요청) 하단에도 확대/축소/원위치 아이콘 제공
+  ensureGen21BottomZoomToolbar(wrap, svgEl);
 }
 
 async function updateTreeView() {
@@ -6173,7 +6676,7 @@ async function updateTreeView() {
           if (topWrap && topSvg && bottomWrap && bottomSvg) {
             paintGenRange21to25TopInfographic(people, topWrap, topSvg);
 
-            if (bottomHint) bottomHint.textContent = gen21SelectedRootId ? `시조(25세): ${gen21SelectedRootId}` : "25세 시조를 선택하세요.";
+            if (bottomHint) bottomHint.textContent = gen21SelectedRootId ? `선조(25세): ${gen21SelectedRootId}` : "25세 선조를 선택하세요.";
             paintGenRange21to31DescEightRule(gen21SelectedRootId, people, 21, 31, bottomWrap, bottomSvg);
           }
           return;
@@ -6223,7 +6726,7 @@ async function updateTreeView() {
       const bottomHint = document.getElementById("tree-gen21-bottom-hint");
       if (topWrap && topSvg && bottomWrap && bottomSvg) {
         paintGenRange21to25TopInfographic(people, topWrap, topSvg);
-        if (bottomHint) bottomHint.textContent = gen21SelectedRootId ? `시조(25세): ${gen21SelectedRootId}` : "25세 시조를 선택하세요.";
+        if (bottomHint) bottomHint.textContent = gen21SelectedRootId ? `선조(25세): ${gen21SelectedRootId}` : "25세 선조를 선택하세요.";
         paintGenRange21to31DescEightRule(gen21SelectedRootId, people, 21, 31, bottomWrap, bottomSvg);
       }
     } else {
