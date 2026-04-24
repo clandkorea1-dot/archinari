@@ -4093,6 +4093,24 @@ function setTreeGenFilter(min, max) {
 
   // 셀렉트 UI는 제거됐지만, 버튼 클릭 시 즉시 화면 갱신은 필요
   if (document.getElementById("view-tree") && !document.getElementById("view-tree")?.classList?.contains("hidden")) {
+    // (중요) 세대 구간을 바꿀 때, 이전 구간의 "줌/픽셀폭/높이" 잔재가 남으면
+    // 화면이 스스로 커지거나 작아지는 것처럼 보일 수 있다.
+    // 따라서 구간 선택 시에는 항상 "초기 크기/원위치"로 먼저 되돌린다.
+    try {
+      const wrap = document.getElementById("tree-svg-wrap");
+      const svgEl = document.getElementById("tree-svg");
+      if (wrap && svgEl) {
+        svgEl.style.transform = "";
+        svgEl.style.transformOrigin = "";
+        svgEl.style.width = "";
+        svgEl.style.height = "";
+        svgEl.__treeZoom = { simple: true, scale: 1 };
+        wrap.scrollLeft = 0;
+        wrap.scrollTop = 0;
+      }
+    } catch {
+      // ignore
+    }
     void updateTreeView();
   }
 }
@@ -4360,10 +4378,13 @@ function paintGenRangeHorizontalScrollTree(people, minGen, maxGen, wrap, svgEl) 
   } catch {
     // ignore
   }
-  // zoom 버튼은 제거됨. 불필요한 transform 잔재 제거
+  // (중요) 이전 렌더러의 픽셀폭/높이·transform 잔재가 남으면
+  // 구간 전환 시 "화면이 스스로 커짐/작아짐"처럼 보일 수 있다.
   try {
     svgEl.style.transform = "";
     svgEl.style.transformOrigin = "";
+    svgEl.style.width = "";
+    svgEl.style.height = "";
   } catch {
     // ignore
   }
@@ -4668,6 +4689,11 @@ function paintGenRangeHorizontalScrollTree(people, minGen, maxGen, wrap, svgEl) 
   svg.setAttribute("width", String(totalW));
   svg.setAttribute("height", "100%");
   svg.style.width = `${totalW}px`;
+  try {
+    svg.style.height = "";
+  } catch {
+    // ignore
+  }
 
   const NS = "http://www.w3.org/2000/svg";
   const gEdge = document.createElementNS(NS, "g");
@@ -4861,6 +4887,7 @@ function initTreeMiniZoomButtons() {
   const svgEl = document.getElementById("tree-svg");
   const btnIn = document.getElementById("tree-zoom-in");
   const btnOut = document.getElementById("tree-zoom-out");
+  const btnReset = document.getElementById("tree-zoom-reset");
   if (!wrap || !svgEl || !btnIn || !btnOut) return;
 
   const apply = (scale) => {
@@ -4878,6 +4905,18 @@ function initTreeMiniZoomButtons() {
     const cur = Number(svgEl.__treeZoom?.scale || 1);
     apply(cur / 1.12);
   });
+
+  if (btnReset) {
+    btnReset.addEventListener("click", () => {
+      apply(1);
+      try {
+        wrap.scrollLeft = 0;
+        wrap.scrollTop = 0;
+      } catch {
+        // ignore
+      }
+    });
+  }
 }
 
 /**
@@ -4899,6 +4938,9 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
   try {
     svgEl.style.transform = "";
     svgEl.style.transformOrigin = "";
+    // (중요) 다른 구간에서 세팅된 픽셀폭/높이를 반드시 지운다(구간 간섭 방지).
+    svgEl.style.width = "";
+    svgEl.style.height = "";
   } catch {
     // ignore
   }
@@ -5137,6 +5179,13 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
     // ignore
   }
 
+  // (초기 화면 고정) 구간 선택 시 항상 처음 위치(좌측)에서 시작
+  try {
+    wrap.scrollLeft = 0;
+  } catch {
+    // ignore
+  }
+
   // 세대 라벨(위) + 컬럼 박스(배치 기준)
   const grid = svg.append("g").attr("aria-label", "세대 컬럼");
   gens.forEach((g, idx) => {
@@ -5352,6 +5401,51 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
     idToPos.set(cid, { x: cp.x, y: y2 });
   };
 
+  const nudgePersonByName = (name, dy) => {
+    const id = findNodeIdByName(name);
+    if (!id) return;
+    const node = idToNode.get(String(id));
+    const gen = node?.gen;
+    if (typeof gen !== "number") return;
+    const p = idToPos.get(String(id));
+    if (!p) return;
+    const y2 = nudgeUniqueY(gen, clampY(p.y + Number(dy || 0)));
+    idToPos.set(String(id), { x: p.x, y: y2 });
+  };
+
+  const placeBelowWithSameGap = (nameTop, nameMid, nameBottom) => {
+    // bottom을 mid 바로 아래로, (mid - top)과 동일 간격으로 배치
+    const tid = findNodeIdByName(nameTop);
+    const mid = findNodeIdByName(nameMid);
+    const bid = findNodeIdByName(nameBottom);
+    if (!tid || !mid || !bid) return;
+    const tp = idToPos.get(String(tid));
+    const mp = idToPos.get(String(mid));
+    const bp = idToPos.get(String(bid));
+    if (!tp || !mp || !bp) return;
+    const bottomNode = idToNode.get(String(bid));
+    const gen = bottomNode?.gen;
+    if (typeof gen !== "number") return;
+    const dy = Math.max(24, Math.min(90, mp.y - tp.y)); // 너무 좁으면 겹침, 너무 넓으면 이탈
+    const want = mp.y + dy;
+    const y2 = nudgeUniqueY(gen, clampY(want));
+    idToPos.set(String(bid), { x: bp.x, y: y2 });
+  };
+
+  const alignYByName = (nameMove, nameRef) => {
+    const mid = findNodeIdByName(nameMove);
+    const rid = findNodeIdByName(nameRef);
+    if (!mid || !rid) return;
+    const mp = idToPos.get(String(mid));
+    const rp = idToPos.get(String(rid));
+    if (!mp || !rp) return;
+    const moveNode = idToNode.get(String(mid));
+    const gen = moveNode?.gen;
+    if (typeof gen !== "number") return;
+    // "같은 높이"가 목적이므로, 충돌 회피(nudge) 없이 y를 정확히 맞춘다.
+    idToPos.set(String(mid), { x: mp.x, y: clampY(rp.y) });
+  };
+
   const xOffsetById = new Map(); // id -> dx
   const shiftRightOfByName = (childName, fatherName) => {
     const cid = findNodeIdByName(childName);
@@ -5415,6 +5509,20 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
   // 난의 아들 몽경이 제자리를 찾도록 난-몽경 연결을 더 직관적으로 정렬
   alignXOffsetByName("난", "린");
   alignChildToFatherByName("난", "몽경");
+
+  // 6) (요청) 원(circle) 겹침 방지: 특정 인물만 미세 이동
+  // - 18세: 영권이 영균과 겹치지 않게 아래로
+  // - 20세: 응세/응운/몽경이 겹치지 않게 간격 확보(응운/몽경을 아래로)
+  // - 14세: 간의가 "현주의여1"과 겹치지 않게 아래로
+  nudgePersonByName("영권", 18);
+  nudgePersonByName("응운", 16);
+  // 몽경은 응운 아래에, (응세↔응운) 간격과 동일하게 배치
+  placeBelowWithSameGap("응세", "응운", "몽경");
+  nudgePersonByName("간의", 16);
+
+  // 7) (요청) 19세 난을 18세 영권과 같은 높이로 "최종" 고정
+  // (반드시 모든 미세조정 이후에 적용해야 값이 같아진다)
+  alignYByName("난", "영권");
 
   // 막대선 연결(부→자): 스파인+가로바 형태
   const linkG = svg.append("g").attr("aria-label", "후손 연결선");

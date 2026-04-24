@@ -1,0 +1,32 @@
+---
+description: 가계도 세대 구간(1-10/11-20/21-31) 전용 렌더링 규칙(간섭 방지·초기 화면 고정)
+globs: "{main.js,index.html,style.css,docs/**/*}"
+alwaysApply: false
+---
+
+# 가계도 세대 구간 전용 렌더링 규칙
+
+## 핵심 원칙
+
+- **세대 구간별 렌더러는 서로 간섭하면 안 된다.**
+  - `1-10세`: `paintGenRangeHorizontalScrollTree`
+  - `11-20세`: `paintGenRange11to20TimelineTree`
+  - `21-31세`: `paintGenRange21to25TopInfographic` + `paintGenRange21to31DescEightRule`
+- 같은 SVG(`tree-svg`)를 재사용하므로, **이전 렌더러가 남긴 상태(특히 `svg.style.width/height`, `transform`)를 항상 초기화**하고 그려야 한다.
+
+## “화면이 스스로 커짐/작아짐”이 생기는 이유(원인)
+
+- `11-20세`는 가로 스크롤을 위해 `svg.style.width = "${canvasW}px"` / `svg.style.height = "${heightHost}px"` 처럼 **픽셀 크기를 직접 지정**한다.
+- 반면 `1-10세`는 `height="100%"` 기반이어서, **이전 렌더러의 `style.height` 같은 인라인 스타일이 남아 있으면** 레이아웃이 바뀌어 “자동으로 커졌다/작아졌다”처럼 보일 수 있다.
+- 또한 구간별 “간단 줌”은 `svg.style.transform = scale(...)`을 쓰므로, 구간 전환 시 이를 지우지 않으면 확대 상태가 이어진다.
+
+## 고정 규칙(반드시 지킬 것)
+
+- **세대 버튼으로 구간을 선택할 때**
+  - `tree-svg`의 `transform/transformOrigin/width/height` 인라인 스타일을 초기화한다.
+  - `__treeZoom.scale`을 1로 되돌린다.
+  - `tree-svg-wrap.scrollLeft = 0`으로 원위치(좌측 시작)로 되돌린다.
+- **각 전용 렌더러 시작 시**
+  - 반드시 `svgEl.style.width/height = ""`를 먼저 수행해 **다른 구간의 픽셀 크기 잔재를 제거**한다.
+- UI는 `tree-svg-wrap` 우측 하단(미니 버튼)에 **원위치(Reset)** 버튼을 둬서 사용자도 즉시 복귀할 수 있게 한다.
+
