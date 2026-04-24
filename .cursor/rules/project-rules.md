@@ -34,6 +34,7 @@
   - 세보 트리
   - 8촌 찾기
   - 촌수 계산기
+- Generation range rendering (1-10 / 11-20 / 21-31 / 32+) must be isolated: never let SVG `style.width/height` or zoom/transform state leak across ranges; always reset on range switch.
 - Tree rendering structure:
   - 1세~24세: card-style summary
   - 25세~30세: core clan branch tree
