@@ -1,0 +1,9 @@
+{
+  "name": "ucheongim-family-pwa",
+  "private": true,
+  "description": "아천문중 세보 PWA — 로컬은 npm run dev 로 http:// 열기",
+  "scripts": {
+    "dev": "npx --yes serve@14 . -l 5173",
+    "start": "npm run dev"
+  }
+}

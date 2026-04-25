@@ -114,8 +114,12 @@ let treeGenFilter = null; // { min:number, max:number } | null
 const genRangePeopleCache = new Map(); // "min-max" -> people[]
 
 // 가계도 표시 모드(특정 세대 구간 전용 레이아웃 등)
-let treeViewMode = "default"; // "default" | "genrange"
+let treeViewMode = "default"; // "default" | "genrange" | "genrange_32_plus" 등
 let gen21SelectedRootId = ""; // 21-31세 전용: 선택된 25세(시조) id
+/** 32세 이후 전용: 상단 명단에서 선택한 32세 문중원 id */
+let gen32SelectedRootId = "";
+/** 32세 이후 패널에 마지막으로 넣은 people 원본(선택 유지·재렌더용) */
+let lastGen32PanelPeople = [];
 
 /** 21–25세 상단 연표(확정): 세대 띠색 + 원형 노드 + 계단 연선. */
 const GEN2125_ROW_BAND_COLORS = ["#dbeafe", "#fce7f3", "#dcfce7", "#fef9c3", "#ede9fe"];
@@ -493,6 +497,26 @@ function readNodeGenLike(obj) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** 시트 성별 필드 — 여성이면 true (녹색 강조에 사용) */
+function readNodeGenderIsFemale(row) {
+  if (!row || typeof row !== "object") return false;
+  const raw = pickFirstString(row, ["성별", "gender", "sex", "Sex", "Gender"]);
+  const v = String(raw || "")
+    .trim()
+    .toLowerCase();
+  if (!v) return false;
+  if (/^(여|녀|f|female|w|woman|2|女)$/.test(v)) return true;
+  if (v.includes("여") && !v.includes("남")) return true;
+  return false;
+}
+
+function filterRowsByGenBand(rows, gMin, gMax) {
+  return (Array.isArray(rows) ? rows : []).filter((row) => {
+    const g = readNodeGenLike(row);
+    return typeof g === "number" && g >= gMin && g <= gMax;
+  });
+}
+
 function joinPeopleText(val) {
   if (val == null) return "";
   if (Array.isArray(val)) return val.map(String).filter(Boolean).join(", ");
@@ -509,6 +533,111 @@ function splitPeopleList(val) {
     .split(/[,，、\n]+/)
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+/** 32세 하단 외손 이름·시트 표기 매칭용(괄호·공백 제거) */
+function normalizeNameTokenForOesonMatch(s) {
+  return String(s || "")
+    .trim()
+    .replace(/\([^)]*\)/g, "")
+    .replace(/（[^）]*）/g, "")
+    .replace(/\s+/g, "");
+}
+
+function collectSubtreeIdsByFatherMap(startId, childrenByFather) {
+  const out = new Set();
+  const stack = [String(startId)];
+  while (stack.length) {
+    const u = stack.pop();
+    if (out.has(u)) continue;
+    out.add(u);
+    for (const k of childrenByFather.get(u) || []) stack.push(String(k.id));
+  }
+  return out;
+}
+
+function gen32ReachableRowIdsFromRoot(rowObjs, rootId) {
+  const rid = String(rootId || "").trim();
+  const childrenOf = new Map();
+  rowObjs.forEach((r) => {
+    const p = String(r.parentId || "").trim();
+    if (!p) return;
+    if (!childrenOf.has(p)) childrenOf.set(p, []);
+    childrenOf.get(p).push(String(r.id));
+  });
+  const ok = new Set([rid]);
+  const q = [rid];
+  while (q.length) {
+    const u = q.shift();
+    for (const v of childrenOf.get(u) || []) {
+      if (ok.has(v)) continue;
+      ok.add(v);
+      q.push(v);
+    }
+  }
+  return ok;
+}
+
+/**
+ * 32세 이후 하단 전용: 여성 문중원은 외손란 첫째 1인만 남기고(시트 부친 기준 형제·그 후손 제거),
+ * 그 1인의 트리 부모를 해당 여성으로 맞춘다. 푸른 연결선용 부 id 집합을 반환한다.
+ */
+function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId) {
+  const syntheticParentByChildId = new Map();
+  const oesonBlueFatherIds = new Set();
+  const rootStr = String(rootId || "").trim();
+  const toRemove = new Set();
+
+  const females = [...keepMap.values()]
+    .filter((n) => readNodeGenderIsFemale(n.row))
+    .sort((a, b) => (Number(b.gen) || 0) - (Number(a.gen) || 0));
+
+  for (const F of females) {
+    const oesonList = splitPeopleList(
+      F.row?.["외손"] ??
+        F.row?.["외손자"] ??
+        F.row?.["외손녀"] ??
+        F.row?.["외손들"] ??
+        F.row?.["외손목록"]
+    );
+    const wantRaw = oesonList[0];
+    if (!wantRaw || !String(wantRaw).trim()) continue;
+    const want = normalizeNameTokenForOesonMatch(wantRaw);
+    if (!want) continue;
+
+    const fid = String(F.id);
+    const candidates = [...keepMap.values()]
+      .filter((n) => {
+        if (String(n.id) === fid) return false;
+        return normalizeNameTokenForOesonMatch(n.name) === want;
+      })
+      .sort((a, b) => {
+        const ga = typeof a.gen === "number" ? a.gen : 999;
+        const gb = typeof b.gen === "number" ? b.gen : 999;
+        if (ga !== gb) return ga - gb;
+        return compareClanMemberIds(a.id, b.id);
+      });
+    if (!candidates.length) continue;
+
+    const chosen = candidates[0];
+    const chosenId = String(chosen.id);
+
+    const fatherKids = (childrenByFather.get(fid) || []).filter((k) => keepMap.has(String(k.id)));
+    for (const fk of fatherKids) {
+      if (String(fk.id) === chosenId) continue;
+      const sub = collectSubtreeIdsByFatherMap(String(fk.id), childrenByFather);
+      if (sub.has(chosenId)) continue;
+      sub.forEach((id) => toRemove.add(id));
+    }
+
+    syntheticParentByChildId.set(chosenId, fid);
+    oesonBlueFatherIds.add(fid);
+  }
+
+  toRemove.delete(rootStr);
+  toRemove.forEach((id) => keepMap.delete(id));
+
+  return { syntheticParentByChildId, oesonBlueFatherIds };
 }
 
 function rebuildPeopleByIdCache() {
@@ -2594,10 +2723,122 @@ function renderClanNotices(data) {
   });
 }
 
+/**
+ * 아천문중 각 칸 → 구글 스프레드시트 편집 URL.
+ * Apps Script가 읽는 통합 스프레드시트 ID와, 각 탭 URL의 `gid=숫자`를 채우면 헤더에 링크가 표시됩니다.
+ * (정관 본문은 로컬 md여도, 시트에 원본이 있으면 여기 gid로 연결)
+ */
+const CLAN_SHEET_EDITOR = {
+  spreadsheetId: "",
+  tabGids: {
+    charter: "",
+    property: "",
+    notice: "",
+    history: "",
+    vote: "",
+    voteResponse: "",
+  },
+};
+
+function clanSpreadsheetEditUrl(gid) {
+  const sid = String(CLAN_SHEET_EDITOR.spreadsheetId || "").trim();
+  const g = String(gid == null ? "" : gid).trim();
+  if (!sid || !g) return "";
+  return `https://docs.google.com/spreadsheets/d/${sid}/edit?usp=drivesdk#gid=${g}`;
+}
+
+function mountClanSheetEditorLinks() {
+  const gids = CLAN_SHEET_EDITOR.tabGids || {};
+
+  const mountOne = (headRow, gidKey, label) => {
+    if (!headRow || headRow.querySelector("[data-clan-sheet-link]")) return;
+    const url = clanSpreadsheetEditUrl(gids[gidKey]);
+    if (!url) return;
+    const wrap = document.createElement("span");
+    wrap.className = "more-bento-sheetwrap";
+    wrap.setAttribute("data-clan-sheet-link", "1");
+    const a = document.createElement("a");
+    a.className = "more-bento-sheetlink";
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = label;
+    wrap.appendChild(a);
+    headRow.appendChild(wrap);
+  };
+
+  mountOne(
+    document.querySelector("#more-charter .more-bento-headrow"),
+    "charter",
+    "정관 시트"
+  );
+  mountOne(
+    document.querySelector("#more-property .more-bento-headrow"),
+    "property",
+    "재산 시트"
+  );
+  mountOne(
+    document.querySelector('section[aria-labelledby="clan-notice-title"] .more-bento-headrow'),
+    "notice",
+    "공지 시트"
+  );
+  mountOne(
+    document.querySelector("#more-history-card .more-bento-headrow"),
+    "history",
+    "연혁 시트"
+  );
+
+  const voteHead = document.querySelector(
+    'section[aria-labelledby="clan-vote-title"] .more-bento-headrow'
+  );
+  if (voteHead && !voteHead.querySelector("[data-clan-sheet-link]")) {
+    const uVote = clanSpreadsheetEditUrl(gids.vote);
+    const uResp = clanSpreadsheetEditUrl(gids.voteResponse);
+    if (uVote || uResp) {
+      const wrap = document.createElement("span");
+      wrap.className = "more-bento-sheetwrap";
+      wrap.setAttribute("data-clan-sheet-link", "1");
+      if (uVote) {
+        const a1 = document.createElement("a");
+        a1.className = "more-bento-sheetlink";
+        a1.href = uVote;
+        a1.target = "_blank";
+        a1.rel = "noopener noreferrer";
+        a1.textContent = "투표 안건 시트";
+        wrap.appendChild(a1);
+      }
+      if (uVote && uResp) {
+        const sep = document.createElement("span");
+        sep.className = "more-bento-sheetsep";
+        sep.setAttribute("aria-hidden", "true");
+        sep.textContent = "·";
+        wrap.appendChild(sep);
+      }
+      if (uResp) {
+        const a2 = document.createElement("a");
+        a2.className = "more-bento-sheetlink";
+        a2.href = uResp;
+        a2.target = "_blank";
+        a2.rel = "noopener noreferrer";
+        a2.textContent = "투표 응답 시트";
+        wrap.appendChild(a2);
+      }
+      voteHead.appendChild(wrap);
+    }
+  }
+}
+
 /** 아천문중 탭: 공지 + 역사 + 투표 */
 async function loadClanTab() {
-  // 정관(로컬 md) + 재산(property 시트) + 공지(notice 시트) + 투표응답(voteRespone 시트)
-  await Promise.all([loadCharterMarkdown(), loadPropertySheet(), loadNoticesSheet(), loadVoteResponseSheet()]);
+  mountClanSheetEditorLinks();
+  // 정관(로컬 md) + 재산(property) + 공지(notice) + 투표 응답 시트 + 안건 UI(action=vote)
+  await Promise.all([
+    loadCharterMarkdown(),
+    loadPropertySheet(),
+    loadNoticesSheet(),
+    loadVoteResponseSheet(),
+    loadVoteSection(),
+  ]);
   // 연혁은 기존 history를 유지(있으면 표시)
   try {
     const histJson = await apiGetSilent({ action: "history", limit: "20" });
@@ -2687,9 +2928,19 @@ function normalizeVotePayload(data) {
   return { title: title || "투표", agendaId: String(agendaId), options, votes: voteArr };
 }
 
+/** 안건·버튼 UI (구버전: #vote-body 단일 영역 호환) */
+function elVoteInteractive() {
+  return document.getElementById("vote-interactive") || document.getElementById("vote-body");
+}
+
+/** 시트 기반 응답 목록 마크다운 */
+function elVoteResponses() {
+  return document.getElementById("vote-responses-md") || document.getElementById("vote-body");
+}
+
 function renderVoteSection(data) {
   const hint = document.getElementById("vote-hint");
-  const body = document.getElementById("vote-body");
+  const body = elVoteInteractive();
   if (!body) return;
 
   lastVoteContext = null;
@@ -2704,7 +2955,10 @@ function renderVoteSection(data) {
     return;
   }
 
-  lastVoteContext = { agendaId: normalized.agendaId };
+  lastVoteContext = {
+    agendaId: normalized.agendaId,
+    options: normalized.options.map((o) => String(o)),
+  };
   if (hint) hint.textContent = "이름 입력 후 항목별 투표를 누르세요.";
   body.innerHTML = "";
   const h4 = document.createElement("h4");
@@ -2740,16 +2994,26 @@ async function submitVoteOption(optionIndex) {
   const nameInput = document.getElementById("vote-voter-name");
   const voterName = nameInput?.value?.trim();
   if (!voterName) {
-    window.alert("투표자 이름을 입력해 주세요.");
+    window.alert("투표자 이름(또는 문중원 ID)을 입력해 주세요.");
     return;
   }
   if (!lastVoteContext) return;
+
+  const opinion = String(document.getElementById("vote-opinion")?.value ?? "").trim();
+  const selectedOptionLabel = String(
+    lastVoteContext.options?.[optionIndex] ?? ""
+  ).trim();
+  /** 시트 열 `찬반`과 동일 값이면 GAS에서 그대로 기록하면 됩니다. */
+  const proCon = selectedOptionLabel;
 
   const { ok, json } = await apiPostForm({
     action: "voteSubmit",
     agendaId: lastVoteContext.agendaId,
     voterName,
     selectedOption: String(optionIndex),
+    selectedOptionLabel,
+    opinion,
+    proCon,
   });
 
   const success =
@@ -2761,6 +3025,7 @@ async function submitVoteOption(optionIndex) {
   if (success) {
     window.alert(String(json.message || "투표가 반영되었습니다."));
     await loadVoteSection();
+    await loadVoteResponseSheet();
   } else {
     window.alert(
       String(json?.message || json?.error || "투표 처리에 실패했습니다.")
@@ -3246,14 +3511,71 @@ function normalizeVoteResponsePayload(json) {
   return Array.isArray(items) ? items : [];
 }
 
+/** 시트 1행 헤더가 한글일 때(타임스탬프, 문중원ID…), JSON 키가 헤더와 같다고 가정해 읽습니다. */
+function pickVoteSheetCell(row, keys) {
+  if (!row || typeof row !== "object") return "";
+  const entries = Object.entries(row).map(([k, v]) => [String(k).trim(), v]);
+  for (const want of keys) {
+    const w = String(want).trim();
+    for (const [k, v] of entries) {
+      if (k !== w) continue;
+      const s = String(v ?? "").trim();
+      if (s) return s;
+    }
+  }
+  return "";
+}
+
 function voteResponsesToMarkdown(items) {
   if (!items || !items.length) return "";
   const lines = ["## 투표 응답", ""];
   items.slice(0, 200).forEach((it, i) => {
-    const name = String(it.name ?? it.voterName ?? it.이름 ?? it.투표자 ?? "").trim();
-    const opt = String(it.option ?? it.choice ?? it.selectedOption ?? it.선택 ?? it.응답 ?? "").trim();
-    const date = String(it.date ?? it.time ?? it.createdAt ?? it.일시 ?? "").trim();
-    const head = `${name || "문중원"}${opt ? ` · ${opt}` : ""}${date ? ` (${date})` : ""}`;
+    const ts = pickVoteSheetCell(it, [
+      "타임스탬프",
+      "timestamp",
+      "date",
+      "time",
+      "createdAt",
+      "일시",
+    ]);
+    const name =
+      pickVoteSheetCell(it, [
+        "문중원ID (또는 성함)",
+        "문중원ID",
+        "name",
+        "voterName",
+        "이름",
+        "투표자",
+      ]) ||
+      String(it.name ?? it.voterName ?? it.이름 ?? it.투표자 ?? "").trim();
+    const opinion = pickVoteSheetCell(it, ["의견", "opinion", "memo", "비고"]);
+    const proCon = pickVoteSheetCell(it, ["찬반", "proCon", "찬반여부"]);
+    const agendaNo = pickVoteSheetCell(it, ["안건번호", "agendaId", "안건"]);
+    const itemPick = pickVoteSheetCell(it, [
+      "항목/의견 선택",
+      "항목",
+      "selectedOptionLabel",
+      "option",
+      "choice",
+      "selectedOption",
+      "선택",
+      "응답",
+    ]);
+    const opt =
+      itemPick ||
+      String(it.option ?? it.choice ?? it.selectedOption ?? it.선택 ?? it.응답 ?? "").trim();
+    const date =
+      ts ||
+      String(it.date ?? it.time ?? it.createdAt ?? it.일시 ?? "").trim();
+    const parts = [
+      name || "문중원",
+      agendaNo ? `안건 ${agendaNo}` : "",
+      proCon ? `찬반 ${proCon}` : "",
+      opt ? `선택 ${opt}` : "",
+      opinion ? `의견: ${opinion}` : "",
+      date ? `(${date})` : "",
+    ].filter(Boolean);
+    const head = parts.join(" · ");
     lines.push(`- ${head || `응답 ${i + 1}`}`);
   });
   lines.push("");
@@ -3262,7 +3584,7 @@ function voteResponsesToMarkdown(items) {
 
 async function loadVoteResponseSheet() {
   const hint = document.getElementById("vote-hint");
-  const body = document.getElementById("vote-body");
+  const body = elVoteResponses();
   if (!body) return;
   if (hint) hint.textContent = "API action=voteResponse (시트: voteResponse) · 호환: voteRespone";
   body.innerHTML = `<p class="text-sm text-stone-500">불러오는 중…</p>`;
@@ -4057,6 +4379,7 @@ function setTreeGenFilter(min, max) {
     invalidateGen2125LayoutCache();
     treeGenFilter = null;
     treeViewMode = "default";
+    gen32SelectedRootId = "";
   } else {
     treeGenFilter = { min: Number(min), max: Number(max) };
     // (중요) 1-10세는 기존 전용 렌더러를 그대로 유지한다.
@@ -4066,7 +4389,9 @@ function setTreeGenFilter(min, max) {
     if (k === "1-10") treeViewMode = "genrange_1_10";
     else if (k === "11-20") treeViewMode = "genrange_11_20";
     else if (k === "21-31") treeViewMode = "genrange_21_31";
+    else if (Number(min) === 32 && Number(max) >= 32) treeViewMode = "genrange_32_plus";
     else treeViewMode = "default";
+    if (treeViewMode !== "genrange_32_plus") gen32SelectedRootId = "";
   }
 
   // 헤더 세대 버튼 활성 표시(선택 색상)
@@ -5645,16 +5970,328 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
   });
 }
 
-function toggleGen21UI(on) {
+/**
+ * 32세 이후 하단: 홈「8촌 친척 찾기」와 동일한 `paintEightKinHorizontalTreeIntoSvg` 경로로만 그린다.
+ * `paintGenRange21to31DescEightRule`·`paintEightKinHorizontalTreeIntoSvg` 본문은 변경하지 않는다.
+ */
+function paintGen32DetailEightKinHorizontal(rootId, people, wrap, svgEl) {
+  const ctxKey = "__gen32Det1120Ctx";
+  try {
+    svgEl[ctxKey] = { rootId: String(rootId || ""), people: Array.isArray(people) ? people : [] };
+  } catch {
+    // ignore
+  }
+  const minGen = 32;
+  const maxGen = 36;
+  const rid = String(rootId || "").trim();
+  const svg = d3.select(svgEl);
+  svg.on(".zoom", null);
+  svg.selectAll("*").remove();
+  if (!rid) {
+    svg
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 12.5)
+      .text("32세 문중원을 선택하세요.");
+    return;
+  }
+
+  const nodesRaw = annotatePeople(Array.isArray(people) ? people : []).map((it) => {
+    const g = readNodeGenLike(it.row);
+    const fid = pickFirstString(it.row, PARENT_ID_KEYS);
+    return {
+      id: String(it.id),
+      name: String(it.name || "").trim(),
+      gen: typeof g === "number" ? g : null,
+      fatherId: fid ? String(fid).trim() : "",
+      row: it.row,
+    };
+  });
+  const idToNode = new Map(nodesRaw.map((n) => [String(n.id), n]));
+  const root = idToNode.get(rid);
+  if (!root) {
+    svg
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 12.5)
+      .text("선택한 32세 문중원을 데이터에서 찾지 못했습니다.");
+    return;
+  }
+
+  const childrenByFather = new Map();
+  nodesRaw.forEach((n) => {
+    const fid = String(n.fatherId || "").trim();
+    if (!fid) return;
+    if (!childrenByFather.has(fid)) childrenByFather.set(fid, []);
+    childrenByFather.get(fid).push(n);
+  });
+  childrenByFather.forEach((arr) => arr.sort((a, b) => compareClanMemberIds(a.id, b.id)));
+
+  const keep = new Map();
+  const seen = new Set([rid]);
+  const q = [root];
+  while (q.length) {
+    const cur = q.shift();
+    const kids = childrenByFather.get(String(cur.id)) || [];
+    kids.forEach((k) => {
+      const id = String(k.id);
+      if (seen.has(id)) return;
+      seen.add(id);
+      q.push(k);
+    });
+  }
+  nodesRaw.forEach((n) => {
+    const id = String(n.id);
+    if (!seen.has(id)) return;
+    if (typeof n.gen !== "number") return;
+    if (n.gen < minGen || n.gen > maxGen) return;
+    keep.set(id, n);
+  });
+  if (typeof root.gen === "number" && root.gen >= minGen && root.gen <= maxGen) {
+    keep.set(rid, root);
+  }
+
+  const { syntheticParentByChildId, oesonBlueFatherIds } = applyGen32FemaleOesonSingleChildRule(
+    keep,
+    childrenByFather,
+    rid
+  );
+
+  const baseRows = [...keep.values()].map((n) => {
+    const sid = String(n.id);
+    const syn = syntheticParentByChildId.get(sid);
+    const parentId = sid === rid ? "" : syn || String(n.fatherId || "").trim();
+    return {
+      id: sid,
+      parentId,
+      name: String(n.name || n.id).trim(),
+      row: n.row,
+    };
+  });
+  const reachable = gen32ReachableRowIdsFromRoot(baseRows, rid);
+  const rows = baseRows
+    .filter((r) => reachable.has(String(r.id)))
+    .sort((a, b) => {
+      const fa = String(a.parentId || "");
+      const fb = String(b.parentId || "");
+      if (fa !== fb) return compareClanMemberIds(fa, fb);
+      return compareClanMemberIds(String(a.id), String(b.id));
+    });
+
+  if (!rows.length) {
+    svg
+      .append("text")
+      .attr("x", "50%")
+      .attr("y", "50%")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "middle")
+      .attr("fill", "#78716c")
+      .attr("font-size", 12.5)
+      .text("표시할 직계 후손 데이터가 없습니다.");
+    return;
+  }
+
+  const fatherId32 = String(root.fatherId || "").trim();
+  let rootBelowNameCaption = "";
+  const fatherNameFromPeople = (fid) => {
+    const key = String(fid || "").trim();
+    if (!key) return "";
+    const arr = Array.isArray(people) ? people : [];
+    for (let i = 0; i < arr.length; i++) {
+      const id = getClanMemberId(arr[i], i);
+      if (String(id) === key) return String(pickFirstString(arr[i], NAME_KEYS) || "").trim();
+    }
+    return "";
+  };
+  if (fatherId32) {
+    const pRow = idToNode.get(fatherId32);
+    rootBelowNameCaption =
+      (pRow ? String(pRow.name || "").trim() : "") ||
+      fatherNameFromPeople(fatherId32) ||
+      nameFromCachesById(fatherId32);
+  }
+  if (!rootBelowNameCaption) {
+    rootBelowNameCaption = String(pickFirstString(root.row, PARENT_NAME_KEYS) || "").trim();
+  }
+
+  paintEightKinHorizontalTreeIntoSvg(svgEl, {
+    rows: rows.map((r) => {
+      const g = readNodeGenLike(r.row);
+      return {
+        ...r,
+        gen: typeof g === "number" ? g : null,
+      };
+    }),
+    rootId: rid,
+    rootGen: root.gen,
+    minGen,
+    maxGen,
+    titleLeft: "기준(32세)",
+    titleRight: "",
+    oesonBlueFatherIds,
+    rootBelowNameCaption,
+    fitContentTopRight: true,
+  });
+
+  ensureGen21BottomZoomToolbar(wrap, svgEl);
+}
+
+/** 21-31세 / 32세 이후 전용 2패널: 기본 SVG·제목 표시를 전환한다 */
+function syncTreeDualPanelChrome() {
+  const g21 = treeViewMode === "genrange_21_31" && !!treeGenFilter;
+  const g32 = treeViewMode === "genrange_32_plus" && !!treeGenFilter;
   const baseWrap = document.getElementById("tree-svg-wrap");
   const gen21Wrap = document.getElementById("tree-gen21-wrap");
+  const gen32Wrap = document.getElementById("tree-gen32-wrap");
   const titleHeader = document.getElementById("tree-title-header");
   const viewTree = document.getElementById("view-tree");
-  if (baseWrap) baseWrap.classList.toggle("hidden", !!on);
-  if (gen21Wrap) gen21Wrap.classList.toggle("hidden", !on);
-  if (titleHeader) titleHeader.classList.toggle("hidden", !!on);
-  // (요청) 21-31 전용 화면은 헤더(상단 탭/서브메뉴)와 더 가깝게 보이도록 여백을 줄인다.
-  if (viewTree) viewTree.classList.toggle("gen21-tight", !!on);
+  if (baseWrap) baseWrap.classList.toggle("hidden", !!(g21 || g32));
+  if (gen21Wrap) gen21Wrap.classList.toggle("hidden", !g21);
+  if (gen32Wrap) gen32Wrap.classList.toggle("hidden", !g32);
+  if (titleHeader) titleHeader.classList.toggle("hidden", !!(g21 || g32));
+  if (viewTree) viewTree.classList.toggle("gen21-tight", !!(g21 || g32));
+}
+
+function buildChildrenByFatherMapFromAnnotated(annotatedItems) {
+  const childrenByFather = new Map();
+  for (const it of annotatedItems) {
+    const fid = pickFirstString(it.row, PARENT_ID_KEYS);
+    if (!fid || !String(fid).trim()) continue;
+    const k = String(fid).trim();
+    if (!childrenByFather.has(k)) childrenByFather.set(k, []);
+    childrenByFather.get(k).push(it);
+  }
+  childrenByFather.forEach((arr) => arr.sort((a, b) => compareClanMemberIds(a.id, b.id)));
+  return childrenByFather;
+}
+
+function collectSubtreeIdsFromRoot(rootId, annotatedItems) {
+  const rid = String(rootId || "").trim();
+  const sub = new Set();
+  if (!rid) return sub;
+  const childrenByFather = buildChildrenByFatherMapFromAnnotated(annotatedItems);
+  const q = [rid];
+  sub.add(rid);
+  while (q.length) {
+    const id = q.shift();
+    for (const ch of childrenByFather.get(id) || []) {
+      const cid = String(ch.id);
+      if (!sub.has(cid)) {
+        sub.add(cid);
+        q.push(cid);
+      }
+    }
+  }
+  return sub;
+}
+
+function renderGen32TopPicks(people, selectedId) {
+  const grid = document.getElementById("tree-gen32-pick-grid");
+  const hint = document.getElementById("tree-gen32-top-hint");
+  if (!grid) return;
+  const annotated = annotatePeople(Array.isArray(people) ? people : []);
+  const list32 = annotated
+    .filter((it) => readNodeGenLike(it.row) === 32)
+    .sort((a, b) => compareClanMemberIds(a.id, b.id));
+  if (hint) {
+    hint.textContent = list32.length
+      ? `총 ${list32.length}명 · 한 줄에 6명씩 배치됩니다(줄이 많으면 세로 스크롤).`
+      : "32세 문중원 데이터가 없습니다. 홈 검색·세보 연동 또는 서버 genRange(32~36) 데이터를 확인해 주세요.";
+  }
+  if (!list32.length) {
+    grid.innerHTML = `<p class="py-8 text-center text-sm text-stone-500">표시할 32세 인물이 없습니다.</p>`;
+    return;
+  }
+  const inner = document.createElement("div");
+  inner.className = "tree-gen32-pick-grid-inner";
+  for (const it of list32) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tree-gen32-pick-btn";
+    btn.setAttribute("role", "listitem");
+    btn.dataset.id = String(it.id);
+    btn.dataset.active = String(it.id) === String(selectedId || "") ? "true" : "false";
+    const female = readNodeGenderIsFemale(it.row);
+    const nm = escapeHtml(String(it.name || it.id).trim());
+    const idShort = escapeHtml(String(it.id));
+    btn.innerHTML = `<span class="tree-gen32-pick-name ${female ? "text-emerald-800" : "text-ink-900"}">${nm}</span><span class="tree-gen32-pick-id">${idShort}</span>`;
+    btn.addEventListener("click", () => {
+      gen32SelectedRootId = String(it.id);
+      renderGen32TopPicks(lastGen32PanelPeople, gen32SelectedRootId);
+      renderGen32DetailPanel(gen32SelectedRootId, lastGen32PanelPeople);
+    });
+    inner.appendChild(btn);
+  }
+  grid.innerHTML = "";
+  grid.appendChild(inner);
+}
+
+function renderGen32DetailPanel(rootId, people) {
+  const el = document.getElementById("tree-gen32-detail");
+  const dh = document.getElementById("tree-gen32-detail-hint");
+  if (!el) return;
+  if (dh) dh.textContent = "";
+  if (!rootId) {
+    if (dh) dh.textContent = "상단 명단에서 한 분을 누르면 이 구역에 가계도 트리로 표시됩니다.";
+    el.innerHTML = `<div class="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-stone-200 bg-stone-50/70 px-4 text-center text-sm text-stone-500">32세 문중원을 선택해 주세요.</div>`;
+    return;
+  }
+  const annotated = annotatePeople(Array.isArray(people) ? people : []);
+  const root = annotated.find((x) => String(x.id) === String(rootId));
+  if (!root) {
+    el.innerHTML = `<p class="text-sm text-red-700">선택한 인물을 데이터에서 찾지 못했습니다.</p>`;
+    return;
+  }
+  const subIds = collectSubtreeIdsFromRoot(rootId, annotated);
+  const nSub = [...subIds].filter((id) => String(id) !== String(rootId)).length;
+
+  el.innerHTML = `
+    <div class="tree-gen32-pedigree">
+      <div id="tree-gen32-1120-wrap" class="tree-zoom-host relative min-h-[400px] w-full overflow-x-auto overflow-y-hidden rounded-xl border border-stone-100 bg-stone-50/80">
+        <svg id="tree-gen32-detail-svg" class="h-full w-full touch-none" role="img" aria-label="하위 8촌형 가로 연표"></svg>
+      </div>
+    </div>`;
+  const wrap1120 = document.getElementById("tree-gen32-1120-wrap");
+  const svg1120 = document.getElementById("tree-gen32-detail-svg");
+  if (wrap1120 && svg1120 && typeof d3 !== "undefined") {
+    paintGen32DetailEightKinHorizontal(rootId, people, wrap1120, svg1120);
+  } else if (wrap1120 && !svg1120) {
+    wrap1120.innerHTML = `<p class="p-4 text-center text-sm text-stone-500">D3 로드를 확인해 주세요.</p>`;
+  }
+  if (dh) {
+    dh.textContent =
+      nSub > 0
+        ? `32~36세 8촌형 가로 연표(홈 8촌 친척 찾기와 동일 규칙). 여성은 외손란 첫째 1인만 푸른색 연결. 하위 ${nSub}명.`
+        : "하위 인원이 없습니다. 자녀 행의 부친 ID가 기준 인물과 연결되는지 확인해 주세요.";
+  }
+}
+
+async function paintGen32PlusDualPanels() {
+  let people = await fetchGenRangePeople(32, 36);
+  if (!people || !people.length) {
+    const wide = await fetchGenRangePeople(32, 999);
+    if (wide && wide.length) people = filterRowsByGenBand(wide, 32, 36);
+  }
+  if (!people || !people.length) people = filterRowsByGenBand(lastSearchRows, 32, 36);
+  lastGen32PanelPeople = Array.isArray(people) ? people : [];
+  const annotated = annotatePeople(lastGen32PanelPeople);
+  const list32 = annotated
+    .filter((it) => readNodeGenLike(it.row) === 32)
+    .sort((a, b) => compareClanMemberIds(a.id, b.id));
+  const pickSet = new Set(list32.map((p) => String(p.id)));
+  if (!gen32SelectedRootId || !pickSet.has(String(gen32SelectedRootId))) {
+    gen32SelectedRootId = list32[0] ? String(list32[0].id) : "";
+  }
+  renderGen32TopPicks(lastGen32PanelPeople, gen32SelectedRootId);
+  renderGen32DetailPanel(gen32SelectedRootId, lastGen32PanelPeople);
 }
 
 /**
@@ -6030,7 +6667,16 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
     maxGen,
     titleLeft = "",
     titleRight = "",
+    oesonBlueFatherIds = null,
+    /** 32세 하단 등: 루트 이름 아래 한 줄(세손 라벨과 동일 서체·색) — 내용은 `(부: 이름)`으로 표기 */
+    rootBelowNameCaption = "",
+    /** 32세 하단: 전체 그림 bbox 우상단을 뷰포트 우상단에 맞춤(21–31·홈은 기존 맞춤 유지) */
+    fitContentTopRight = false,
   } = opts || {};
+  const capTrimRootBelow = String(rootBelowNameCaption || "").trim();
+  const rootBelowFatherDisplay = capTrimRootBelow ? `(부: ${capTrimRootBelow})` : "";
+  const blueFatherSet =
+    oesonBlueFatherIds instanceof Set ? oesonBlueFatherIds : oesonBlueFatherIds ? new Set([...oesonBlueFatherIds]) : null;
 
   const list = Array.isArray(rows) ? rows : [];
   const rid = String(rootId || "").trim();
@@ -6096,6 +6742,11 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
   const FONT_MAIN = 12.5;
   const FONT_CAP = 10;
   const ROOT_FONT_BOOST = 2.5;
+  const rootFatherLineDyPx =
+    rootBelowFatherDisplay && String(rootBelowFatherDisplay).trim()
+      ? (FONT_MAIN + ROOT_FONT_BOOST) * 1.15 * 1.3
+      : 0;
+  const rootFatherExtraBottom = rootFatherLineDyPx > 0 ? rootFatherLineDyPx + FONT_CAP + 18 : 0;
 
   /** @type {Map<string, { id: string, name: string, gen: number|null, col: number, fatherId: string, x: number, y: number, w: number, h: number }>} */
   const byId = new Map();
@@ -6213,7 +6864,11 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
   const layoutCol = (c) => {
     const arr = byCol.get(c) || [];
     arr.forEach((n) => {
-      n.w = Math.min(220, Math.max(36, n.name.length * FONT_MAIN * 0.52 + 10));
+      let w0 = n.name.length * FONT_MAIN * 0.52 + 10;
+      if (rootBelowFatherDisplay && n.id === rid) {
+        w0 = Math.max(w0, rootBelowFatherDisplay.length * FONT_CAP * 0.52 + 8);
+      }
+      n.w = Math.min(220, Math.max(36, w0));
       n.x = colCenterX(c);
     });
 
@@ -6250,7 +6905,16 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
     let y = PAD_T + 34;
     orderedKeys.forEach((k) => {
       const nodes = groups.get(k) || [];
-      const inner = Math.max(ROW_H, Math.max(0, nodes.length - 1) * MIN_DY);
+      const rootSubtitleExtra =
+        rootFatherLineDyPx > 0 &&
+        nodes.length === 1 &&
+        String(nodes[0]?.id) === String(rid)
+          ? Math.round(rootFatherLineDyPx + FONT_CAP + 10) - ROW_H
+          : 0;
+      const inner = Math.max(
+        ROW_H + Math.max(0, rootSubtitleExtra),
+        Math.max(0, nodes.length - 1) * MIN_DY
+      );
       const pad = Math.max(10, Math.min(22, nodes.length * 3));
       const blockH = inner + pad * 2;
 
@@ -6322,9 +6986,32 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
     if (n.gen != null && gMax != null && n.gen > gMax) return;
 
     const isRoot = n.id === rid;
+    const x0 = n.x - n.w / 2;
+    if (isRoot && rootBelowFatherDisplay) {
+      const nameFontPx = FONT_MAIN + ROOT_FONT_BOOST;
+      const te = gNode.append("text")
+        .attr("x", x0)
+        .attr("y", n.y)
+        .attr("text-anchor", "start")
+        .attr("dominant-baseline", "middle")
+        .attr("font-family", "Noto Sans KR, Pretendard, sans-serif");
+      te.append("tspan")
+        .attr("font-size", nameFontPx)
+        .attr("font-weight", "700")
+        .attr("fill", "#166534")
+        .text(n.name || n.id);
+      te.append("tspan")
+        .attr("x", x0)
+        .attr("dy", rootFatherLineDyPx)
+        .attr("font-size", FONT_CAP)
+        .attr("font-weight", "800")
+        .attr("fill", "#0f172a")
+        .text(rootBelowFatherDisplay);
+      return;
+    }
     const te = gNode.append("text");
     te
-      .attr("x", n.x - n.w / 2)
+      .attr("x", x0)
       .attr("y", n.y)
       .attr("text-anchor", "start")
       .attr("dominant-baseline", "middle")
@@ -6357,7 +7044,11 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
     const xTextLeftMin = Math.min(...kids.map((k) => k.x - k.w / 2));
     const xDot = xTextLeftMin - 12;
 
-    // 아버지 → 형제묶음 가운데로 곡선 연결(녹색)
+    const isBlue = blueFatherSet && blueFatherSet.has(String(fid));
+    const strokeMain = isBlue ? "#2563eb" : EIGHT_KIN_EDGE;
+    const strokeSoft = isBlue ? "rgba(37, 99, 235, 0.42)" : EIGHT_KIN_EDGE_SOFT;
+
+    // 아버지 → 형제묶음 가운데로 곡선 연결(기본 녹색 / 32세 여성·외손 1인은 푸른색)
     const xFrom = p.x + p.w / 2 + 6;
     const bend = Math.max(22, Math.min(72, (xDot - xFrom) * 0.55));
     gEdge
@@ -6367,7 +7058,7 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
         `M${xFrom},${p.y} C${xFrom + bend},${p.y} ${xDot - bend},${yMid} ${xDot},${yMid}`
       )
       .attr("fill", "none")
-      .attr("stroke", EIGHT_KIN_EDGE)
+      .attr("stroke", strokeMain)
       .attr("stroke-width", 1.1)
       .attr("stroke-linecap", "round")
       .attr("stroke-linejoin", "round")
@@ -6380,7 +7071,7 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
         .attr("cx", xDot)
         .attr("cy", ch.y)
         .attr("r", 1.8)
-        .attr("fill", EIGHT_KIN_EDGE)
+        .attr("fill", strokeMain)
         .attr("opacity", 0.95);
     });
 
@@ -6390,18 +7081,19 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
         .append("path")
         .attr("d", `M${xDot},${minYk} L${xDot},${maxYk}`)
         .attr("fill", "none")
-        .attr("stroke", EIGHT_KIN_EDGE_SOFT)
+        .attr("stroke", strokeSoft)
         .attr("stroke-width", 0.85)
         .attr("stroke-linecap", "round")
         .attr("opacity", 0.45);
     }
   });
 
-  const totalH = Math.max(260, maxY + PAD_T + 40);
+  const totalH = Math.max(260, maxY + PAD_T + 40 + rootFatherExtraBottom);
   svg
     .attr("viewBox", `0 0 ${totalW} ${totalH}`)
     .attr("width", "100%")
     .attr("height", "100%")
+    .style("overflow", "visible")
     .style("cursor", "grab")
     .style("touch-action", "none");
 
@@ -6422,10 +7114,23 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
   // 추가 요청: **Y축(세로 높이)** 을 우선으로 채우도록 스케일을 잡는다.
   // 추가 요청: 초기 화면은 약 93% 높이에 맞춘다.
   // 사용자는 휠/드래그로 다시 조정 가능.
-  const fitLastGenToRight = () => {
+  /** d3-zoom은 SVG에 viewBox가 있으면 extent·__zoom을 뷰박스 사용자 좌표(0~width)에 둔다. getBBox와 같은 단위로만 계산해야 한다. */
+  const readViewBoxUserSize = () => {
     try {
-      const rect = svgEl.getBoundingClientRect?.();
-      if (!rect || rect.width <= 0 || rect.height <= 0) return;
+      const b = svgEl.viewBox && svgEl.viewBox.baseVal;
+      if (b && Number.isFinite(b.width) && b.width > 0 && Number.isFinite(b.height) && b.height > 0) {
+        return { vbW: b.width, vbH: b.height };
+      }
+    } catch {
+      // ignore
+    }
+    return { vbW: totalW, vbH: totalH };
+  };
+
+  const fitLastGenLabelToRight = () => {
+    try {
+      const { vbW, vbH } = readViewBoxUserSize();
+      if (!(vbW > 0) || !(vbH > 0)) return;
       const lastCol = maxCol;
       const lastNodes = (byCol.get(lastCol) || []).filter((n) => Number.isFinite(n.y));
       const ys = lastNodes.map((n) => n.y);
@@ -6433,32 +7138,77 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
       const maxYc = ys.length ? Math.max(...ys) : PAD_T + 200;
       const colH = Math.max(40, maxYc - minY);
 
-      // (요청) 31세 명단이 세로 93%를 채우도록
-      const pad = 18;
-      const scale = Math.min(6, Math.max(0.12, ((rect.height - pad * 2) / colH) * 0.93));
+      const padU = 18;
+      const scale = Math.min(6, Math.max(0.12, ((vbH - padU * 2) / colH) * 0.93));
 
-      // (요청) "31세손" 라벨 텍스트가 정확히 우측 상단에 오게(bbox 기준)
       const labelNode = gNode.select(`text[data-gen-col="${String(lastCol)}"]`).node();
       const lb = labelNode && labelNode.getBBox ? labelNode.getBBox() : null;
       const rightX = lb ? lb.x + lb.width : colCenterX(lastCol);
       const topY = lb ? lb.y : PAD_T;
-      const tx = rect.width - pad - rightX * scale;
-      const ty = pad - topY * scale;
+      const tx = vbW - padU - rightX * scale;
+      const ty = padU - topY * scale;
 
-      svg
-        .transition()
-        .duration(0)
-        .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+      svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
     } catch {
       // ignore
     }
   };
 
-  // 맞춤 기능을 외부 툴바에서 호출할 수 있게 노출
-  svgEl.__eightKinLikeFit = { fitLastGenToRight };
+  /** 32세 하단: gRoot 전체 bbox의 우상단을 뷰박스(표시 영역) 우상단에 맞춘다 — 좌표는 전부 사용자 단위 */
+  const fitWholeContentTopRight = () => {
+    try {
+      const { vbW, vbH } = readViewBoxUserSize();
+      if (!(vbW > 0) || !(vbH > 0)) return;
+      const padU = 18;
+      const gn = gRoot.node();
+      const bb = gn && typeof gn.getBBox === "function" ? gn.getBBox() : null;
+      if (!bb || !Number.isFinite(bb.width) || !Number.isFinite(bb.height) || bb.width < 0.5 || bb.height < 0.5) {
+        fitLastGenLabelToRight();
+        return;
+      }
+      const scale = Math.min(
+        6,
+        Math.max(
+          0.12,
+          Math.min(((vbH - padU * 2) / bb.height) * 0.93, ((vbW - padU * 2) / bb.width) * 0.98)
+        )
+      );
+      const tx = vbW - padU - (bb.x + bb.width) * scale;
+      const ty = padU - bb.y * scale;
+      svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+    } catch {
+      fitLastGenLabelToRight();
+    }
+  };
 
-  // (요청) 25세 선택 직후 첫 렌더링은 "맞춤" 상태여야 함
-  fitLastGenToRight();
+  const runInitialFit = fitContentTopRight ? fitWholeContentTopRight : fitLastGenLabelToRight;
+
+  // 맞춤 기능을 외부 툴바에서 호출할 수 있게 노출(속성명은 기존과 동일)
+  svgEl.__eightKinLikeFit = { fitLastGenToRight: runInitialFit };
+
+  // 레이아웃·폰트 반영 후 맞춤(숨김 탭 등에서 rect=0이면 한 번 더 시도)
+  const scheduleInitialFit = () => {
+    const attempt = (left) => {
+      try {
+        const { vbW, vbH } = readViewBoxUserSize();
+        if (vbW > 2 && vbH > 2) {
+          runInitialFit();
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      if (left > 0) setTimeout(() => attempt(left - 1), 80);
+    };
+    if (typeof requestAnimationFrame !== "undefined") {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => attempt(3));
+      });
+    } else {
+      attempt(3);
+    }
+  };
+  scheduleInitialFit();
 }
 
 function ensureGen21BottomZoomToolbar(bottomWrap, bottomSvg) {
@@ -6625,6 +7375,8 @@ function paintGenRange21to31DescEightRule(rootId, people, minGen, maxGen, wrap, 
     maxGen,
     titleLeft: "선조(25세)",
     titleRight: "",
+    // 32세 하단과 동일: 첫 렌더·「맞춤」 시 전체 bbox 우상단 = 뷰박스 우상단, 화면에 꽉 차게 스케일
+    fitContentTopRight: true,
   });
 
   // (요청) 하단에도 확대/축소/원위치 아이콘 제공
@@ -6637,10 +7389,18 @@ async function updateTreeView() {
   const hint = document.getElementById("tree-hint");
   if (!svgEl || !wrap || typeof d3 === "undefined") return;
 
-  // 21-31세 전용 UI 표시/숨김
-  toggleGen21UI(treeViewMode === "genrange_21_31" && !!treeGenFilter);
+  syncTreeDualPanelChrome();
 
   if (!lastSearchRows.length) {
+    if (treeViewMode === "genrange_32_plus" && treeGenFilter) {
+      await paintGen32PlusDualPanels();
+      if (hint) {
+        hint.textContent = lastGen32PanelPeople.length
+          ? "표시 범위: 32–36세 (32세 이후 · 명단·상세)"
+          : "32–36세 데이터가 없습니다. 서버 genRange(32,36) 또는 홈 검색 결과를 확인해 주세요.";
+      }
+      return;
+    }
     const svg = d3.select(svgEl);
     svg.selectAll("*").remove();
     svg.append("text")
@@ -6686,6 +7446,16 @@ async function updateTreeView() {
         }
         return;
       }
+    }
+    return;
+  }
+
+  if (treeViewMode === "genrange_32_plus" && treeGenFilter) {
+    await paintGen32PlusDualPanels();
+    if (hint) {
+      hint.textContent = lastGen32PanelPeople.length
+        ? "표시 범위: 32–36세 (32세 이후 · 명단·상세)"
+        : "32–36세 데이터가 없습니다. 서버 genRange(32,36) 또는 홈 검색 결과를 확인해 주세요.";
     }
     return;
   }
@@ -6738,7 +7508,6 @@ async function updateTreeView() {
   }
 
   // 기본(기존) 렌더
-  toggleGen21UI(false);
   if (hint) {
     hint.textContent = treeGenFilter
       ? `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세`

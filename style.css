@@ -107,6 +107,362 @@
   padding-top: 12px;
 }
 
+/* 32세 이후: 명단 그리드(인원 증가 대비) */
+.tree-gen32-pick-scroll {
+  scrollbar-gutter: stable;
+  min-height: 168px;
+}
+.tree-gen32-pick-btn {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  max-height: 38px;
+  border-radius: 0;
+  border: 1px solid rgba(120, 113, 108, 0.28);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 4px 8px;
+  text-align: center;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.12s ease;
+}
+.tree-gen32-pick-btn:hover {
+  border-color: rgba(180, 83, 9, 0.45);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+.tree-gen32-pick-btn:active {
+  transform: translateY(1px);
+}
+.tree-gen32-pick-btn[data-active="true"] {
+  border-color: rgba(180, 83, 9, 0.75);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.95), rgba(255, 255, 255, 0.98));
+  border-radius: 0;
+}
+.tree-gen32-pick-name {
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.15;
+  word-break: keep-all;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tree-gen32-pick-id {
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: rgba(87, 83, 78, 0.78);
+  word-break: break-all;
+  flex: 0 0 auto;
+  max-width: 42%;
+}
+/* 32세 명단: 가로 한 줄 6명 고정 */
+.tree-gen32-pick-grid-inner {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+  justify-items: center;
+}
+.tree-gen32-card {
+  border-radius: 14px;
+  border: 1px solid rgba(120, 113, 108, 0.22);
+  background: rgba(255, 255, 255, 0.95);
+  padding: 10px 12px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+}
+.tree-gen32-card--female {
+  border-color: rgba(5, 150, 105, 0.35);
+  background: linear-gradient(145deg, rgba(236, 253, 245, 0.95), rgba(255, 255, 255, 0.98));
+}
+.tree-gen32-tier-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: rgba(87, 83, 78, 0.85);
+  text-transform: uppercase;
+}
+.tree-gen32-spouse-card {
+  border-style: dashed;
+  border-color: rgba(120, 113, 108, 0.35);
+  background: rgba(250, 250, 249, 0.9);
+}
+
+/* 32세 이후 하단: 전통형 세로 트리 */
+.tree-gen32-detail-host {
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+}
+.tree-gen32-pedigree {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px 20px;
+  min-width: min(100%, 280px);
+}
+.tree-gen32-couple-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 6px;
+  max-width: 100%;
+}
+.tree-gen32-couple-slot {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 46%;
+}
+.tree-gen32-marriage {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(120, 113, 108, 0.55);
+  padding: 0 2px;
+  line-height: 1;
+}
+.tree-gen32-tree-node {
+  border-radius: 12px;
+  border: 1px solid rgba(120, 113, 108, 0.28);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 8px 10px;
+  text-align: center;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  min-width: 0;
+}
+.tree-gen32-tree-node--female {
+  border-color: rgba(5, 150, 105, 0.4);
+  background: linear-gradient(160deg, rgba(236, 253, 245, 0.98), rgba(255, 255, 255, 0.98));
+}
+.tree-gen32-tree-node-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: #1c1917;
+  line-height: 1.25;
+  word-break: keep-all;
+}
+.tree-gen32-tree-node--female .tree-gen32-tree-node-name {
+  color: #065f46;
+}
+.tree-gen32-tree-node-meta {
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(87, 83, 78, 0.75);
+}
+.tree-gen32-tree-node-id {
+  margin-top: 3px;
+  font-size: 8px;
+  color: rgba(120, 113, 108, 0.85);
+}
+.tree-gen32-tree-spouse {
+  border-radius: 12px;
+  border: 1px dashed rgba(120, 113, 108, 0.4);
+  background: rgba(250, 250, 249, 0.95);
+  padding: 8px 10px;
+  text-align: center;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.tree-gen32-tree-spouse-lbl {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: rgba(87, 83, 78, 0.65);
+  text-transform: uppercase;
+}
+.tree-gen32-tree-spouse-nm {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #292524;
+  line-height: 1.25;
+}
+.tree-gen32-tree-spouse-empty {
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(120, 113, 108, 0.55);
+}
+.tree-gen32-nest {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  margin-top: 2px;
+}
+.tree-gen32-vline {
+  width: 0;
+  min-height: 14px;
+  border-left: 2px solid rgba(87, 83, 78, 0.38);
+}
+.tree-gen32-vline--sm {
+  min-height: 10px;
+}
+.tree-gen32-kids {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 14px 18px;
+  padding: 10px 8px 4px;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+}
+/* 자녀들 위 가로 주름(전통 족보 느낌) */
+.tree-gen32-kids::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 8%;
+  right: 8%;
+  height: 0;
+  border-top: 2px solid rgba(87, 83, 78, 0.32);
+  pointer-events: none;
+}
+.tree-gen32-kids--nested {
+  padding-top: 8px;
+  margin-top: 2px;
+}
+.tree-gen32-kids--nested::before {
+  left: 4%;
+  right: 4%;
+  border-top-color: rgba(87, 83, 78, 0.26);
+}
+.tree-gen32-kids--one-child::before {
+  left: 40%;
+  right: 40%;
+}
+
+/* 33세 자녀 행: 이름만, 최대 10열·가로 유동 폭 */
+.tree-gen32-gen33-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 6px 8px;
+  width: 100%;
+  max-width: 100%;
+  position: relative;
+  padding: 12px 2px 4px;
+  box-sizing: border-box;
+}
+.tree-gen32-gen33-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 4%;
+  right: 4%;
+  height: 0;
+  border-top: 2px solid rgba(87, 83, 78, 0.32);
+  pointer-events: none;
+}
+.tree-gen32-gen33-row--one::before {
+  left: 32%;
+  right: 32%;
+}
+.tree-gen33-branch {
+  position: relative;
+  flex: 1 1 calc((100% - 56px) / var(--g33n, 6));
+  min-width: 0;
+  max-width: calc((100% - 56px) / var(--g33n, 6));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+}
+.tree-gen33-branch::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 10px;
+  border-left: 2px solid rgba(87, 83, 78, 0.32);
+}
+.tree-gen33-name {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #1c1917;
+  line-height: 1.25;
+  padding: 6px 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 113, 108, 0.28);
+  background: rgba(255, 255, 255, 0.96);
+  word-break: keep-all;
+}
+.tree-gen33-name--female {
+  color: #065f46;
+  border-color: rgba(5, 150, 105, 0.38);
+  background: linear-gradient(160deg, rgba(236, 253, 245, 0.95), rgba(255, 255, 255, 0.98));
+}
+.tree-gen33-more {
+  width: 100%;
+  max-width: 28rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+/* 33세 이름 아래 후손: 열별(부모 기준)로 구분되는 가지 */
+.tree-gen33-branch > .tree-gen32-nest {
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 0;
+  padding: 0 2px 4px 6px;
+  border-left: 1px dashed rgba(87, 83, 78, 0.22);
+  border-radius: 0 0 0 8px;
+}
+.tree-gen32-tree-node-badge {
+  margin-bottom: 3px;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #92400e;
+}
+.tree-gen32-kidcol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding-top: 10px;
+  min-width: 72px;
+  max-width: 140px;
+}
+.tree-gen32-kidcol::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 10px;
+  border-left: 2px solid rgba(87, 83, 78, 0.32);
+}
+.tree-gen32-kids--nested .tree-gen32-kidcol::before {
+  height: 8px;
+  border-left-color: rgba(87, 83, 78, 0.26);
+}
+
 /* 신문풍 타이포(미세 조정) */
 html {
   text-rendering: geometricPrecision;
@@ -286,9 +642,49 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
 
 #view-more .more-bento-headrow {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* 아천문중: 각 칸 ↔ 구글 시트 편집 링크(main.js CLAN_SHEET_EDITOR) */
+#view-more .more-bento-sheetwrap {
+  margin-left: auto;
+  margin-right: 2.75rem; /* 펼침 막대(absolute)와 겹침 완화 */
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  flex: 0 1 auto;
+  max-width: 100%;
+  justify-content: flex-end;
+}
+
+#view-more .more-bento-sheetlink {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #166534;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+#view-more .more-bento-sheetlink:hover {
+  color: #14532d;
+}
+
+#view-more .more-bento-sheetsep {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(26, 46, 46, 0.35);
+  user-select: none;
+}
+
+/* 펼침 버튼 없는 헤더(연혁): 시트 링크만 오른쪽 정렬 */
+#view-more .more-bento-headrow--sheetonly .more-bento-sheetwrap {
+  margin-right: 0;
 }
 
 #view-more .more-expand-btn {

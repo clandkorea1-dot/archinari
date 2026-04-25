@@ -279,16 +279,48 @@
               </p>
             </div>
             <div class="paper-box-body">
-              <div class="grid gap-2 sm:grid-cols-[1fr,1fr,auto] sm:items-end">
-                <div class="min-w-0">
-                  <label class="text-xs font-medium text-stone-700" for="kinship-id1">문중원 ①</label>
-                  <input id="kinship-id1" type="text" autocomplete="off" placeholder="ID 또는 이름" class="mt-1 paper-input" />
+              <div
+                class="overflow-x-auto rounded-xl border border-stone-200/90 bg-gradient-to-b from-stone-50/95 to-white/80 shadow-sm"
+              >
+                <div class="flex w-full min-w-[17.5rem] flex-col gap-2 p-3 sm:min-w-0">
+                  <div class="grid grid-cols-2 gap-x-3 text-xs font-medium text-stone-700">
+                    <label for="kinship-id1">문중원 ①</label>
+                    <label for="kinship-id2">문중원 ②</label>
+                  </div>
+                  <div class="flex min-w-0 flex-nowrap items-center gap-3">
+                    <div
+                      class="flex min-w-0 flex-1 flex-nowrap divide-x divide-stone-200/90 rounded-lg border border-stone-200/70 bg-white/90 px-2 py-1.5 sm:px-2.5 sm:py-2"
+                      role="group"
+                      aria-label="문중원 두 분 입력"
+                    >
+                      <div class="min-w-[7.5rem] flex-1 pr-2 sm:min-w-0 sm:pr-3">
+                        <input
+                          id="kinship-id1"
+                          type="text"
+                          autocomplete="off"
+                          placeholder="ID 또는 이름"
+                          class="paper-input"
+                        />
+                      </div>
+                      <div class="min-w-[7.5rem] flex-1 pl-2 sm:min-w-0 sm:pl-3">
+                        <input
+                          id="kinship-id2"
+                          type="text"
+                          autocomplete="off"
+                          placeholder="ID 또는 이름"
+                          class="paper-input"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      id="kinship-calc-btn"
+                      class="inline-flex h-11 shrink-0 items-center justify-center rounded-xl border border-seal/35 bg-seal px-4 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 active:translate-y-px"
+                    >
+                      계산
+                    </button>
+                  </div>
                 </div>
-                <div class="min-w-0">
-                  <label class="text-xs font-medium text-stone-700" for="kinship-id2">문중원 ②</label>
-                  <input id="kinship-id2" type="text" autocomplete="off" placeholder="ID 또는 이름" class="mt-1 paper-input" />
-                </div>
-                <button type="button" id="kinship-calc-btn" class="paper-action-btn">계산</button>
               </div>
               <div
                 id="kinship-disambig"
@@ -370,6 +402,31 @@
               >
                 <svg id="tree-gen21-bottom-svg" class="h-full w-full touch-none" role="img" aria-label="21-31세"></svg>
               </div>
+            </div>
+          </section>
+
+          <!-- 32세 이후 전용: 상단(32세 명단 6열) + 하단(선택 기준 가계도 트리) -->
+          <section id="tree-gen32-wrap" class="hidden space-y-4">
+            <div class="tree-gen32-panel rounded-2xl border border-stone-200/90 bg-[#f3efe4] p-4 shadow-sm">
+              <div class="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <p class="text-xs font-bold tracking-wide text-stone-700">32세 문중원 명단</p>
+                  <p id="tree-gen32-top-hint" class="mt-0.5 max-w-prose text-[11px] leading-snug text-stone-500"></p>
+                </div>
+                <span class="rounded-full bg-amber-100/90 px-2.5 py-0.5 text-[10px] font-semibold text-amber-900/90">탭하여 하단 상세</span>
+              </div>
+              <div
+                id="tree-gen32-pick-grid"
+                class="tree-gen32-pick-scroll mt-3 max-h-[min(42vh,520px)] min-h-[140px] overflow-y-auto rounded-xl border border-stone-100/90 bg-white/60 p-3"
+                role="list"
+                aria-label="32세 문중원 선택"
+              ></div>
+            </div>
+
+            <div class="tree-gen32-panel rounded-2xl border border-stone-200/90 bg-gradient-to-b from-white to-stone-50/80 p-4 shadow-sm">
+              <p class="text-xs font-bold text-stone-700">선택 인물 기준 가계도 (트리)</p>
+              <p id="tree-gen32-detail-hint" class="mt-0.5 text-[11px] text-stone-500"></p>
+              <div id="tree-gen32-detail" class="tree-gen32-detail-host mt-3 min-h-[220px]"></div>
             </div>
           </section>
         </div>
@@ -468,7 +525,9 @@
             class="more-bento-cell"
             aria-labelledby="clan-history-title"
           >
-            <h3 id="clan-history-title" class="more-bento-h3">연혁·사료</h3>
+            <div class="more-bento-headrow more-bento-headrow--sheetonly">
+              <h3 id="clan-history-title" class="more-bento-h3">연혁·사료</h3>
+            </div>
             <p id="more-history-hint" class="more-bento-hint"></p>
             <div id="more-history-body" class="more-bento-body mt-1 space-y-2 text-sm text-[#1a2e2e]/90"></div>
           </section>
@@ -486,7 +545,40 @@
             </div>
             <p id="vote-hint" class="more-bento-hint"></p>
             <div class="more-collapsible is-collapsed" data-more-body="more-vote">
-              <div id="vote-body" class="more-bento-body more-md mt-2 space-y-2 text-sm text-[#1a2e2e]/90"></div>
+              <div
+                id="vote-body"
+                class="more-bento-body more-md mt-2 space-y-3 text-sm text-[#1a2e2e]/90"
+              >
+                <div class="space-y-1.5">
+                  <label for="vote-voter-name" class="text-xs font-medium text-stone-600"
+                    >투표자 이름</label
+                  >
+                  <input
+                    id="vote-voter-name"
+                    type="text"
+                    maxlength="40"
+                    placeholder="실명 또는 문중원 ID"
+                    autocomplete="name"
+                    class="more-bento-input w-full px-3 py-2 text-sm"
+                  />
+                </div>
+                <div class="space-y-1.5">
+                  <label for="vote-opinion" class="text-xs font-medium text-stone-600">의견 (선택)</label>
+                  <textarea
+                    id="vote-opinion"
+                    rows="2"
+                    maxlength="500"
+                    placeholder="추가 의견"
+                    class="more-bento-input min-h-[3.25rem] w-full resize-y px-3 py-2 text-sm"
+                  ></textarea>
+                </div>
+                <div id="vote-interactive" class="mt-1 min-h-0 space-y-2" aria-live="polite"></div>
+                <div
+                  id="vote-responses-md"
+                  class="more-md mt-3 min-h-0 space-y-2 border-t border-[#1a2e2e]/15 pt-3"
+                  aria-live="polite"
+                ></div>
+              </div>
             </div>
           </section>
 
