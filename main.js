@@ -148,8 +148,7 @@ function applyGen2125PickSelection(treeById) {
       gen21SelectedRootId = picks[0].id;
     }
     if (hint) {
-      hint.textContent =
-        "25세 표시를 누르면 하단(직계·31세까지)이 바뀝니다. 아이디 빠른 순 4명만 선택됩니다.";
+      hint.textContent = "21–25세: 25세를 선택하여 하단에 직계 후손 확인";
     }
   }
   return { pickSet, picks };
@@ -579,27 +578,44 @@ function gen32ReachableRowIdsFromRoot(rowObjs, rootId) {
 }
 
 /**
- * 32세 이후 하단 전용: 여성 문중원은 외손란 첫째 1인만 남기고(시트 부친 기준 형제·그 후손 제거),
- * 그 1인의 트리 부모를 해당 여성으로 맞춘다. 푸른 연결선용 부 id 집합을 반환한다.
+ * 32세 문중원 선택 후 하단「선택인물기준」가계도 전용 (`paintGen32DetailEightKinHorizontal`에서만 호출).
+ * 세 번호 기준으로 33세 이하(= 32~33세 범위) 여성에게만 적용한다. (이 트리는 32~36 범위지만 34~36은 제외)
+ *
+ * 외손 열(외손/외손자/…)에 기록된 이름 중 첫 1명만 매칭·연결하고, 시트 부친 기준 형제·그 후손은 제거한다.
+ * 매칭된 모–외손 구간은 `oesonBlueFatherIds`로 파란 연결선을 그린다. 다른 가계도 렌더에는 사용하지 않는다.
+ *
+ * (요청 보강) 성별 필드가 비어/혼재된 경우가 있어, "여성" 판정이 실패하더라도
+ * 해당 문중원ID의 행에 외손 열이 채워져 있으면 여성 후보로 간주해 그 외손 기록을 사용한다.
  */
 function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId) {
   const syntheticParentByChildId = new Map();
   const oesonBlueFatherIds = new Set();
   const rootStr = String(rootId || "").trim();
   const toRemove = new Set();
+  /** 세 번호 기준 33세 이하만(32~33) */
+  const OESON_RULE_MAX_GEN = 33;
+
+  const getOesonList = (row) =>
+    splitPeopleList(
+      row?.["외손"] ??
+        row?.["외손자"] ??
+        row?.["외손녀"] ??
+        row?.["외손들"] ??
+        row?.["외손목록"]
+    );
 
   const females = [...keepMap.values()]
-    .filter((n) => readNodeGenderIsFemale(n.row))
     .sort((a, b) => (Number(b.gen) || 0) - (Number(a.gen) || 0));
 
   for (const F of females) {
-    const oesonList = splitPeopleList(
-      F.row?.["외손"] ??
-        F.row?.["외손자"] ??
-        F.row?.["외손녀"] ??
-        F.row?.["외손들"] ??
-        F.row?.["외손목록"]
-    );
+    const gF = typeof F.gen === "number" ? F.gen : null;
+    if (gF == null || gF > OESON_RULE_MAX_GEN) continue;
+
+    const oesonList = getOesonList(F.row);
+    const hasOeson = Array.isArray(oesonList) && oesonList.length > 0;
+    const isFemaleByRow = readNodeGenderIsFemale(F.row);
+    if (!isFemaleByRow && !hasOeson) continue;
+
     const wantRaw = oesonList[0];
     if (!wantRaw || !String(wantRaw).trim()) continue;
     const want = normalizeNameTokenForOesonMatch(wantRaw);
@@ -3234,7 +3250,7 @@ function initHeaderTabs() {
 function initMorePageChrome() {
   document.getElementById("more-back-top")?.addEventListener("click", () => {
     document
-      .querySelector("#view-more .more-bento-hero")
+      .querySelector("#view-more .more-bento-hero-banner")
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 }

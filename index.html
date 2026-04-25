@@ -139,8 +139,8 @@
             <div id="hdr-submenu-more" class="hdr-sub hidden grid grid-cols-4 gap-1 text-[11px] font-medium text-stone-700">
               <button type="button" class="hdr-subbtn rounded-md px-2 py-1" data-scroll-to="more-charter">정관</button>
               <button type="button" class="hdr-subbtn rounded-md px-2 py-1" data-scroll-to="more-property">문중재산</button>
-              <button type="button" class="hdr-subbtn rounded-md px-2 py-1" data-scroll-to="clan-notice-title">공지사항</button>
-              <button type="button" class="hdr-subbtn rounded-md px-2 py-1" data-scroll-to="vote-body">문중원투표</button>
+              <button type="button" class="hdr-subbtn rounded-md px-2 py-1" data-scroll-to="more-notice">공지사항</button>
+              <button type="button" class="hdr-subbtn rounded-md px-2 py-1" data-scroll-to="more-vote">문중원투표</button>
             </div>
           </div>
         </section>
@@ -457,15 +457,17 @@
       <!-- 아천문중: 벤토 그리드(첨부 레퍼런스 톤) — 헤더 4칸 서브메뉴 구조는 유지 -->
       <div id="view-more" class="view-panel hidden flex flex-col pb-6">
         <div class="more-bento-frame">
-          <header class="more-bento-hero">
-            <p class="more-bento-kicker">COLUMN.</p>
-            <div class="more-bento-hero-row">
-              <h2 class="more-bento-h1">아천문중</h2>
-              <span class="more-bento-vbar" aria-hidden="true"></span>
-              <span class="more-bento-h1-sub" lang="ja">亞天門中</span>
-            </div>
-            <p class="more-bento-lead">공지 · 정관 · 문중재산 · 투표 · 연혁</p>
-          </header>
+          <div class="more-bento-hero-banner">
+            <img
+              src="assets/more-hero-landscape.png?v=1"
+              width="1200"
+              height="400"
+              class="more-bento-hero-banner-img"
+              alt="전통 촌락 풍경: 소를 이끄는 아이와 산·논·초가집이 어우러진 고향 풍경"
+              decoding="async"
+              fetchpriority="low"
+            />
+          </div>
           <div class="more-bento-dash" aria-hidden="true"></div>
           <p class="more-bento-status">표시: 문중 콘텐츠</p>
 
@@ -503,7 +505,7 @@
             </div>
           </section>
 
-          <section class="more-bento-cell" aria-labelledby="clan-notice-title">
+          <section id="more-notice" class="more-bento-cell" aria-labelledby="clan-notice-title">
             <div class="more-bento-headrow">
               <h3 id="clan-notice-title" class="more-bento-h3">공지사항</h3>
               <button
@@ -532,7 +534,7 @@
             <div id="more-history-body" class="more-bento-body mt-1 space-y-2 text-sm text-[#1a2e2e]/90"></div>
           </section>
 
-          <section class="more-bento-cell" aria-labelledby="clan-vote-title">
+          <section id="more-vote" class="more-bento-cell" aria-labelledby="clan-vote-title">
             <div class="more-bento-headrow">
               <h3 id="clan-vote-title" class="more-bento-h3">문중원투표</h3>
               <button

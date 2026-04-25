@@ -593,6 +593,23 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   color: var(--bento-ink);
 }
 
+/* 아천문중: 상단 풍경 배너(가로형 이미지 — 박스 너비에 맞춤, 높이는 cover로 크롭) */
+#view-more .more-bento-hero-banner {
+  width: 100%;
+  height: clamp(112px, 30vw, 200px);
+  overflow: hidden;
+  border-bottom: 1px solid var(--bento-ink);
+  background: #c8dbe8;
+}
+
+#view-more .more-bento-hero-banner-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 42%;
+}
+
 #app-header .hdr-wine {
   color: #8b2942;
 }
@@ -778,57 +795,6 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   margin: 0.22rem 0;
 }
 
-#view-more .more-bento-hero {
-  padding: 1.1rem 1rem 0.85rem;
-}
-
-#view-more .more-bento-kicker {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  opacity: 0.85;
-}
-
-#view-more .more-bento-hero-row {
-  margin-top: 0.35rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.65rem;
-}
-
-#view-more .more-bento-h1 {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 800;
-  line-height: 1.15;
-  letter-spacing: -0.03em;
-}
-
-#view-more .more-bento-vbar {
-  display: inline-block;
-  width: 1px;
-  align-self: stretch;
-  min-height: 1.6rem;
-  background: var(--bento-ink);
-  opacity: 0.55;
-}
-
-#view-more .more-bento-h1-sub {
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  opacity: 0.88;
-}
-
-#view-more .more-bento-lead {
-  margin-top: 0.5rem;
-  text-align: center;
-  font-size: 12px;
-  opacity: 0.72;
-}
-
 #view-more .more-bento-dash {
   height: 0;
   margin: 0.35rem 0 0;
@@ -845,10 +811,11 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   background: rgba(255, 255, 255, 0.28);
 }
 
+/* 헤더(sticky) + 4탭 + 서브메뉴 한 줄을 가리지 않도록 스크롤 앵커 여백 */
 #view-more .more-bento-cell {
   padding: 1rem 0.9rem 1.1rem;
   border-bottom: 1px solid var(--bento-ink);
-  scroll-margin-top: 6.25rem;
+  scroll-margin-top: max(11.25rem, 180px);
   position: relative;
   padding-bottom: 2.55rem; /* 하단 세로막대 버튼 자리 */
 }
