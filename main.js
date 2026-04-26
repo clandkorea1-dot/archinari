@@ -121,6 +121,9 @@ let gen32SelectedRootId = "";
 /** 32세 이후 패널에 마지막으로 넣은 people 원본(선택 유지·재렌더용) */
 let lastGen32PanelPeople = [];
 
+// updateTreeView 비동기 경쟁(빠른 탭 전환/재시도) 방지용 토큰
+let treeViewUpdateSeq = 0;
+
 /** 21–25세 상단 연표(확정): 세대 띠색 + 원형 노드 + 계단 연선. */
 const GEN2125_ROW_BAND_COLORS = ["#dbeafe", "#fce7f3", "#dcfce7", "#fef9c3", "#ede9fe"];
 
@@ -4496,6 +4499,274 @@ function pickSheetChamgo(row) {
   return String(pickFirstString(row, ["참고", "분기", "branch", "파", "파계"]) || "").trim();
 }
 
+function buildGenRangeNodesWithInferredGen(people, minGen, maxGen) {
+  const nodesRaw = annotatePeople(people).map((it) => {
+    const g = readNodeGenLike(it.row);
+    const fid = pickFirstString(it.row, PARENT_ID_KEYS);
+    return {
+      id: String(it.id),
+      name: String(it.name || "").trim(),
+      gen: typeof g === "number" ? g : null,
+      fatherId: fid ? String(fid).trim() : "",
+      extra: pickExtraSmallLine(it.row),
+      chamgo: pickSheetChamgo(it.row),
+      gaji: pickSheetGajiPath(it.row),
+      row: it.row,
+    };
+  });
+
+  // 1-10세에서 서버 세손/부친 연결이 불완전할 수 있으므로
+  // father(gen)+1 전파로 gen을 보강(기존 전용 로직과 동일 방향).
+  const haveMinRoots = nodesRaw.some((n) => n.gen === minGen);
+  const minExisting = nodesRaw
+    .map((n) => n.gen)
+    .filter((g) => typeof g === "number")
+    .reduce((a, b) => Math.min(a, b), Infinity);
+  const rootGen = haveMinRoots ? minGen : (Number.isFinite(minExisting) ? minExisting : minGen);
+
+  const inferred = new Map();
+  nodesRaw.forEach((n) => {
+    if (n.gen === rootGen) inferred.set(n.id, rootGen);
+  });
+  for (let iter = 0; iter < nodesRaw.length; iter++) {
+    let changed = false;
+    nodesRaw.forEach((n) => {
+      if (!n.fatherId) return;
+      const pg = inferred.get(n.fatherId);
+      if (typeof pg !== "number") return;
+      const want = pg + 1;
+      if (want < minGen || want > maxGen) return;
+      if (!inferred.has(n.id)) {
+        inferred.set(n.id, want);
+        changed = true;
+      }
+    });
+    if (!changed) break;
+  }
+  // 시트의 gen 값이 있으면 최우선
+  nodesRaw.forEach((n) => {
+    if (typeof n.gen === "number") inferred.set(n.id, n.gen);
+  });
+
+  return nodesRaw
+    .map((n) => ({ ...n, gen: inferred.get(n.id) ?? n.gen ?? null }))
+    .filter((n) => typeof n.gen === "number" && n.gen >= minGen && n.gen <= maxGen);
+}
+
+function ensureGenRangeCompareMounted() {
+  const mount = document.getElementById("tree-compare-mount");
+  if (!mount) return null;
+
+  let wrap = document.getElementById("tree-compare-wrap");
+  if (wrap) return wrap;
+
+  // 1-10세 전용 영역: 비교 렌더 + 하단 미니 카드
+  const host = document.createElement("div");
+  host.id = "tree-gen1to10-host";
+  host.className = "w-full space-y-3";
+
+  wrap = document.createElement("section");
+  wrap.id = "tree-compare-wrap";
+  wrap.className = "w-full rounded-xl border border-stone-100 bg-white/70";
+  wrap.setAttribute("aria-label", "1-10세 전용 트리(비교용)");
+
+  const scroll = document.createElement("div");
+  scroll.id = "tree-compare-scroll";
+  scroll.className = "tree-compare-scroll";
+  scroll.setAttribute("role", "region");
+  scroll.setAttribute("aria-label", "비교용 스크롤");
+
+  const list = document.createElement("div");
+  list.id = "tree-compare-list";
+  list.className = "tree-compare-list";
+  list.setAttribute("role", "list");
+
+  scroll.appendChild(list);
+  wrap.appendChild(scroll);
+
+  const mini = document.createElement("section");
+  mini.id = "tree-gen1to10-mini-box";
+  mini.className = "tree-gen1to10-mini-card";
+  mini.setAttribute("aria-label", "중시조 9세 용비");
+
+  const miniHead = document.createElement("div");
+  miniHead.className = "tree-gen1to10-mini-card-head";
+
+  const miniKicker = document.createElement("div");
+  miniKicker.className = "tree-gen1to10-mini-card-kicker";
+  miniKicker.textContent = "기록";
+
+  const miniTitle = document.createElement("div");
+  miniTitle.className = "tree-gen1to10-mini-card-title";
+  miniTitle.textContent = "중시조 9세 용비";
+
+  miniHead.appendChild(miniKicker);
+  miniHead.appendChild(miniTitle);
+
+  const miniBody = document.createElement("div");
+  miniBody.className = "tree-gen1to10-mini-card-body";
+  miniBody.textContent = "내용을 여기에 추가하세요.";
+
+  mini.appendChild(miniHead);
+  mini.appendChild(miniBody);
+
+  host.appendChild(wrap);
+  host.appendChild(mini);
+  mount.appendChild(host);
+  return wrap;
+}
+
+function applyTreeCompareDualLayout(on) {
+  const svgWrap = document.getElementById("tree-svg-wrap");
+  const mount = document.getElementById("tree-compare-mount");
+  if (!svgWrap || !mount) return;
+
+  if (on) {
+    svgWrap.classList.add("sm:w-1/2");
+    mount.classList.add("sm:w-1/2");
+  } else {
+    svgWrap.classList.remove("sm:w-1/2");
+    mount.classList.remove("sm:w-1/2");
+  }
+}
+
+function setTreeSvgWrapVisible(on) {
+  const svgWrap = document.getElementById("tree-svg-wrap");
+  if (!svgWrap) return;
+  if (on) svgWrap.classList.remove("hidden");
+  else svgWrap.classList.add("hidden");
+}
+
+function unmountGenRangeCompare() {
+  const host = document.getElementById("tree-gen1to10-host");
+  if (host && host.parentNode) host.parentNode.removeChild(host);
+}
+
+function renderGenRange1to10CompareList(people, minGen, maxGen) {
+  // (규칙) 1-10세에서는 비교용이 "유일한" 전용 렌더링이다.
+  // 기존 SVG(가로 스크롤 1-10세)는 표시/렌더하지 않는다.
+  applyTreeCompareDualLayout(false);
+  setTreeSvgWrapVisible(false);
+  try {
+    const viewTree = document.getElementById("view-tree");
+    if (viewTree) viewTree.classList.add("gen1to10-tight");
+  } catch {
+    // ignore
+  }
+  try {
+    const hint = document.getElementById("tree-hint");
+    if (hint) hint.classList.add("hidden");
+  } catch {
+    // ignore
+  }
+  const wrap = ensureGenRangeCompareMounted();
+  const list = document.getElementById("tree-compare-list");
+  if (!wrap || !list) return;
+
+  while (list.firstChild) list.removeChild(list.firstChild);
+
+  const nodes = buildGenRangeNodesWithInferredGen(people, minGen, maxGen);
+  if (!nodes.length) return;
+
+  // gen -> fatherId -> nodes
+  const byGen = new Map();
+  nodes.forEach((n) => {
+    const g = n.gen;
+    if (!byGen.has(g)) byGen.set(g, new Map());
+    const m = byGen.get(g);
+    const fid = n.fatherId || "__root__";
+    if (!m.has(fid)) m.set(fid, []);
+    m.get(fid).push(n);
+  });
+
+  const gens = [...byGen.keys()].sort((a, b) => a - b);
+  gens.forEach((g) => {
+    const genBlock = document.createElement("div");
+    genBlock.className = "tree-compare-gen-block";
+    genBlock.setAttribute("role", "group");
+
+    const genMark = document.createElement("span");
+    genMark.className = "tree-compare-genmark";
+    genMark.setAttribute("aria-hidden", "true");
+    genBlock.appendChild(genMark);
+
+    const fatherMap = byGen.get(g);
+    const fatherIds = [...fatherMap.keys()].sort((a, b) => compareClanMemberIds(a, b));
+    fatherIds.forEach((fid) => {
+      const arr = fatherMap.get(fid) || [];
+      arr.sort((a, b) => compareClanMemberIds(a.id, b.id));
+
+      const makeItem = (n, isSiblingItem) => {
+        const item = document.createElement("div");
+        item.className = isSiblingItem ? "tree-compare-sib-item" : "tree-compare-item";
+        item.setAttribute("role", "listitem");
+
+        const body = document.createElement("div");
+        body.className = "tree-compare-body";
+
+        const title = document.createElement("div");
+        title.className = "tree-compare-title";
+
+        const gen = document.createElement("span");
+        gen.className = "tree-compare-gen";
+        gen.textContent = `${n.gen}세`;
+
+        const name = document.createElement("span");
+        name.className = "tree-compare-name";
+        name.textContent = n.name || n.id;
+
+        title.appendChild(gen);
+        title.appendChild(name);
+
+        const meta = document.createElement("div");
+        meta.className = "tree-compare-meta";
+        const lines = [];
+        const chamgo = String(n.chamgo || "").trim();
+        const gaji = String(n.gaji || "").trim();
+        if (chamgo) lines.push(chamgo);
+        if (gaji) lines.push(gaji);
+        if (!lines.length && n.extra) lines.push(String(n.extra));
+        meta.textContent = lines.join("\n");
+
+        body.appendChild(title);
+        if (meta.textContent) body.appendChild(meta);
+        item.appendChild(body);
+        return item;
+      };
+
+      if (arr.length <= 1) {
+        genBlock.appendChild(makeItem(arr[0], false));
+      } else {
+        const sibs = document.createElement("div");
+        sibs.className = "tree-compare-sibs";
+        sibs.setAttribute("role", "group");
+        arr.forEach((n) => sibs.appendChild(makeItem(n, true)));
+        genBlock.appendChild(sibs);
+      }
+    });
+
+    list.appendChild(genBlock);
+  });
+}
+
+function hideGenRangeCompareList() {
+  applyTreeCompareDualLayout(false);
+  setTreeSvgWrapVisible(true);
+  try {
+    const viewTree = document.getElementById("view-tree");
+    if (viewTree) viewTree.classList.remove("gen1to10-tight");
+  } catch {
+    // ignore
+  }
+  try {
+    const hint = document.getElementById("tree-hint");
+    if (hint) hint.classList.remove("hidden");
+  } catch {
+    // ignore
+  }
+  unmountGenRangeCompare();
+}
+
 function paintGenRangeCircleTree(people, minGen, maxGen, wrap, svgEl) {
   const svg = d3.select(svgEl);
   svg.on(".zoom", null);
@@ -5306,28 +5577,25 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
 
   const svg = d3.select(svgEl);
 
-  const nodesRaw = annotatePeople(people).map((it) => {
-    const g = readNodeGenLike(it.row);
-    const fid = pickFirstString(it.row, PARENT_ID_KEYS);
-    return {
-      id: String(it.id),
-      name: String(it.name || "").trim(),
-      gen: typeof g === "number" ? g : null,
-      fatherId: fid ? String(fid).trim() : "",
-      extra: pickExtraSmallLine(it.row),
-      row: it.row,
-    };
-  });
+  // (안정) gen 값이 누락/불일치여도 fatherId 체인으로 gen을 보강해 사용
+  const nodesRaw = buildGenRangeNodesWithInferredGen(people, minGen, maxGen).map((n) => ({
+    id: String(n.id),
+    name: String(n.name || "").trim(),
+    gen: typeof n.gen === "number" ? n.gen : null,
+    fatherId: String(n.fatherId || "").trim(),
+    extra: String(n.extra || "").trim(),
+    row: n.row,
+  }));
 
   const norm = (s) => String(s || "").replace(/\s+/g, "").trim();
-  const root11 =
-    nodesRaw.find((n) => n.gen === 11 && norm(n.name).includes("춘")) ||
+  // (안정) '춘'을 못 찾더라도, 화면이 깨지지 않도록 루트를 강제로 정한다.
+  const rootCandidate =
+    nodesRaw.find((n) => typeof n.gen === "number" && norm(n.name).includes("춘")) ||
     nodesRaw.find((n) => n.gen === 11) ||
+    nodesRaw.slice().sort((a, b) => compareClanMemberIds(String(a.id), String(b.id)))[0] ||
     null;
 
-  if (!root11) {
-    // (중요) 11-20세는 타 렌더러(예: 1-10세)로 폴백하지 않는다.
-    // 데이터가 예상과 다르면 "이 렌더러 안에서" 안전하게 실패 표시만 한다.
+  if (!rootCandidate) {
     svg
       .attr("viewBox", `0 0 ${widthHost} ${heightHost}`)
       .append("text")
@@ -5336,9 +5604,12 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
       .attr("text-anchor", "middle")
       .attr("fill", "#78716c")
       .attr("font-size", 13)
-      .text("11세 기준 인물(춘)을 찾지 못했습니다.");
+      .text("11–20세 데이터가 없습니다.");
     return;
   }
+
+  // 루트는 항상 "11세(춘)" 위치에 고정해서 렌더러 가정이 흔들리지 않게 한다.
+  const root11 = { ...rootCandidate, gen: 11 };
 
   const nodesInRange = nodesRaw.filter(
     (n) => typeof n.gen === "number" && n.gen >= minGen && n.gen <= maxGen
@@ -6164,16 +6435,27 @@ function paintGen32DetailEightKinHorizontal(rootId, people, wrap, svgEl) {
 function syncTreeDualPanelChrome() {
   const g21 = treeViewMode === "genrange_21_31" && !!treeGenFilter;
   const g32 = treeViewMode === "genrange_32_plus" && !!treeGenFilter;
+  const g = !!(g21 || g32);
+  const dualWrap = document.getElementById("tree-dual-wrap");
   const baseWrap = document.getElementById("tree-svg-wrap");
   const gen21Wrap = document.getElementById("tree-gen21-wrap");
   const gen32Wrap = document.getElementById("tree-gen32-wrap");
   const titleHeader = document.getElementById("tree-title-header");
   const viewTree = document.getElementById("view-tree");
-  if (baseWrap) baseWrap.classList.toggle("hidden", !!(g21 || g32));
+  const hint = document.getElementById("tree-hint");
+  // (중요) 21-31/32+ 전용 화면에서는 기본(dual) 영역 자체를 숨긴다.
+  // baseWrap만 숨기면 dualWrap이 남아 "빈 박스"처럼 보일 수 있다.
+  if (dualWrap) dualWrap.classList.toggle("hidden", g);
+  if (baseWrap) baseWrap.classList.toggle("hidden", g);
   if (gen21Wrap) gen21Wrap.classList.toggle("hidden", !g21);
   if (gen32Wrap) gen32Wrap.classList.toggle("hidden", !g32);
-  if (titleHeader) titleHeader.classList.toggle("hidden", !!(g21 || g32));
-  if (viewTree) viewTree.classList.toggle("gen21-tight", !!(g21 || g32));
+  if (titleHeader) titleHeader.classList.toggle("hidden", g);
+  if (viewTree) viewTree.classList.toggle("gen21-tight", g);
+  // (요청) 21-31 전용에서는 "표시 범위..." 문구를 노출하지 않는다(상단 공간도 절약).
+  if (hint) {
+    if (g21) hint.textContent = "";
+    hint.classList.toggle("hidden", !!g21);
+  }
 }
 
 function buildChildrenByFatherMapFromAnnotated(annotatedItems) {
@@ -6688,6 +6970,8 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
     rootBelowNameCaption = "",
     /** 32세 하단: 전체 그림 bbox 우상단을 뷰포트 우상단에 맞춤(21–31·홈은 기존 맞춤 유지) */
     fitContentTopRight = false,
+    /** 21–31 하단(모바일): 전체 콘텐츠를 화면 중앙에 맞춰 탐색성을 높인다 */
+    fitContentCenter = false,
   } = opts || {};
   const capTrimRootBelow = String(rootBelowNameCaption || "").trim();
   const rootBelowFatherDisplay = capTrimRootBelow ? `(부: ${capTrimRootBelow})` : "";
@@ -7038,6 +7322,13 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
       .text(n.name || n.id);
   });
 
+  // (검색/포커스용) 좌표 모델을 외부로 노출
+  try {
+    svgEl.__eightKinLikeModel = { byId, totalW, totalH, rid };
+  } catch {
+    // ignore
+  }
+
   // 연결선: 같은 아버지의 자녀를 곡선 + 점 + 세로선으로 묶기(8촌과 동일)
   const childrenByFather = new Map();
   byId.forEach((n) => {
@@ -7197,7 +7488,39 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
     }
   };
 
-  const runInitialFit = fitContentTopRight ? fitWholeContentTopRight : fitLastGenLabelToRight;
+  const fitWholeContentCenter = () => {
+    try {
+      const { vbW, vbH } = readViewBoxUserSize();
+      if (!(vbW > 0) || !(vbH > 0)) return;
+      const padU = 18;
+      const gn = gRoot.node();
+      const bb = gn && typeof gn.getBBox === "function" ? gn.getBBox() : null;
+      if (!bb || !Number.isFinite(bb.width) || !Number.isFinite(bb.height) || bb.width < 0.5 || bb.height < 0.5) {
+        fitLastGenLabelToRight();
+        return;
+      }
+      const scale = Math.min(
+        6,
+        Math.max(
+          0.12,
+          Math.min(((vbH - padU * 2) / bb.height) * 0.93, ((vbW - padU * 2) / bb.width) * 0.98)
+        )
+      );
+      const cx = bb.x + bb.width / 2;
+      const cy = bb.y + bb.height / 2;
+      const tx = vbW / 2 - cx * scale;
+      const ty = vbH / 2 - cy * scale;
+      svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+    } catch {
+      fitLastGenLabelToRight();
+    }
+  };
+
+  const runInitialFit = fitContentTopRight
+    ? fitWholeContentTopRight
+    : fitContentCenter
+      ? fitWholeContentCenter
+      : fitLastGenLabelToRight;
 
   // 맞춤 기능을 외부 툴바에서 호출할 수 있게 노출(속성명은 기존과 동일)
   svgEl.__eightKinLikeFit = { fitLastGenToRight: runInitialFit };
@@ -7263,6 +7586,70 @@ function ensureGen21BottomZoomToolbar(bottomWrap, bottomSvg) {
 
   // 렌더 직후 바로 연결 시도, 실패하면 다음 tick에서 재시도
   if (!hook()) setTimeout(hook, 0);
+}
+
+function ensureGen21BottomFindUI() {
+  const input = document.getElementById("tree-gen21-find-input");
+  const btn = document.getElementById("tree-gen21-find-btn");
+  const wrap = document.getElementById("tree-gen21-bottom-svg-wrap");
+  const svgEl = document.getElementById("tree-gen21-bottom-svg");
+  if (!input || !btn || !wrap || !svgEl) return;
+
+  const focusByIdOrName = (q) => {
+    const query = String(q || "").trim();
+    if (!query) return false;
+    const model = svgEl.__eightKinLikeModel;
+    const zoomRef = svgEl.__eightKinLikeZoom;
+    if (!model || !model.byId || !zoomRef || !zoomRef.svg) return false;
+
+    const byId = model.byId;
+    const direct = byId.get(query);
+    let target = direct || null;
+    if (!target) {
+      const nq = query.replace(/\s+/g, "");
+      for (const n of byId.values()) {
+        const nm = String(n.name || "").replace(/\s+/g, "");
+        if (nm && nm.includes(nq)) {
+          target = n;
+          break;
+        }
+      }
+    }
+    if (!target) return false;
+
+    try {
+      const { zoom, svg } = zoomRef;
+      const vb = svgEl.viewBox?.baseVal;
+      const vbW = vb?.width || 360;
+      const vbH = vb?.height || 360;
+      const cur = svgEl.__zoom;
+      const k = cur && Number.isFinite(cur.k) ? cur.k : 1;
+      const x = Number(target.x || 0);
+      const y = Number(target.y || 0);
+      const tx = vbW / 2 - x * k;
+      const ty = vbH / 2 - y * k;
+      svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const run = () => {
+    const ok = focusByIdOrName(input.value);
+    if (!ok) {
+      input.style.outline = "2px solid rgba(220, 38, 38, 0.45)";
+      setTimeout(() => (input.style.outline = ""), 700);
+    }
+  };
+
+  if (!btn.dataset.bound) {
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", run);
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") run();
+    });
+  }
 }
 
 function paintGenRange21to31DescEightRule(rootId, people, minGen, maxGen, wrap, svgEl) {
@@ -7391,15 +7778,19 @@ function paintGenRange21to31DescEightRule(rootId, people, minGen, maxGen, wrap, 
     maxGen,
     titleLeft: "선조(25세)",
     titleRight: "",
-    // 32세 하단과 동일: 첫 렌더·「맞춤」 시 전체 bbox 우상단 = 뷰박스 우상단, 화면에 꽉 차게 스케일
-    fitContentTopRight: true,
+    // (규칙) 21-31세 하단은 31세(마지막 열) 기준으로 "우측 상단" 정렬한다.
+    // 구현: fitLastGenLabelToRight 사용(마지막 열 라벨 bbox를 우측 상단으로 맞춤)
+    fitContentTopRight: false,
+    fitContentCenter: false,
   });
 
   // (요청) 하단에도 확대/축소/원위치 아이콘 제공
   ensureGen21BottomZoomToolbar(wrap, svgEl);
+  ensureGen21BottomFindUI();
 }
 
 async function updateTreeView() {
+  const seq = ++treeViewUpdateSeq;
   const svgEl = document.getElementById("tree-svg");
   const wrap = document.getElementById("tree-svg-wrap");
   const hint = document.getElementById("tree-hint");
@@ -7408,6 +7799,7 @@ async function updateTreeView() {
   syncTreeDualPanelChrome();
 
   if (!lastSearchRows.length) {
+    hideGenRangeCompareList();
     if (treeViewMode === "genrange_32_plus" && treeGenFilter) {
       await paintGen32PlusDualPanels();
       if (hint) {
@@ -7438,11 +7830,17 @@ async function updateTreeView() {
       } catch {
         people = null;
       }
+      if (seq !== treeViewUpdateSeq) return;
       if (people && people.length) {
-        if (hint) hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
+        // (규칙) 21-31 전용은 "표시 범위..." 문구를 보여주지 않는다.
+        if (hint && treeViewMode !== "genrange_21_31") {
+          hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
+        }
         if (treeViewMode === "genrange_11_20") {
+          hideGenRangeCompareList();
           paintGenRange11to20TimelineTree(people, 11, 20, wrap, svgEl);
         } else if (treeViewMode === "genrange_21_31") {
+          hideGenRangeCompareList();
           // 21-31세 전용: 상단(21-25) + 하단(25시조→31) 렌더
           const topWrap = document.getElementById("tree-gen21-top-svg-wrap");
           const topSvg = document.getElementById("tree-gen21-top-svg");
@@ -7457,8 +7855,8 @@ async function updateTreeView() {
           }
           return;
         } else {
-          // 1-10세 전용 렌더러(건드리지 않음)
-          paintGenRangeHorizontalScrollTree(people, 1, 10, wrap, svgEl);
+          // 1-10세: 비교용 전용 렌더링만 사용
+          renderGenRange1to10CompareList(people, 1, 10);
         }
         return;
       }
@@ -7467,7 +7865,9 @@ async function updateTreeView() {
   }
 
   if (treeViewMode === "genrange_32_plus" && treeGenFilter) {
+    hideGenRangeCompareList();
     await paintGen32PlusDualPanels();
+    if (seq !== treeViewUpdateSeq) return;
     if (hint) {
       hint.textContent = lastGen32PanelPeople.length
         ? "표시 범위: 32–36세 (32세 이후 · 명단·상세)"
@@ -7480,10 +7880,14 @@ async function updateTreeView() {
     (treeViewMode === "genrange_1_10" || treeViewMode === "genrange_11_20" || treeViewMode === "genrange_21_31") &&
     treeGenFilter
   ) {
-    if (hint) hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
+    // (규칙) 21-31 전용은 "표시 범위..." 문구를 보여주지 않는다.
+    if (hint && treeViewMode !== "genrange_21_31") {
+      hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
+    }
     // 서버 genRange가 있으면 사용, 없으면 현재 검색 결과에서만 구성
     let people = await fetchGenRangePeople(treeGenFilter.min, treeGenFilter.max);
     if (!people) people = lastSearchRows;
+    if (seq !== treeViewUpdateSeq) return;
     if (!people || !people.length) {
       const svg = d3.select(svgEl);
       svg.selectAll("*").remove();
@@ -7503,8 +7907,10 @@ async function updateTreeView() {
       return;
     }
     if (treeViewMode === "genrange_11_20") {
+      hideGenRangeCompareList();
       paintGenRange11to20TimelineTree(people, 11, 20, wrap, svgEl);
     } else if (treeViewMode === "genrange_21_31") {
+      hideGenRangeCompareList();
       const topWrap = document.getElementById("tree-gen21-top-svg-wrap");
       const topSvg = document.getElementById("tree-gen21-top-svg");
       const bottomWrap = document.getElementById("tree-gen21-bottom-svg-wrap");
@@ -7516,13 +7922,14 @@ async function updateTreeView() {
         paintGenRange21to31DescEightRule(gen21SelectedRootId, people, 21, 31, bottomWrap, bottomSvg);
       }
     } else {
-      // 1-10세 전용 렌더러(건드리지 않음)
-      paintGenRangeHorizontalScrollTree(people, 1, 10, wrap, svgEl);
+      // 1-10세: 비교용 전용 렌더링만 사용
+      renderGenRange1to10CompareList(people, 1, 10);
     }
     // 전체를 한 번에 그리므로 스크롤 중 재렌더는 하지 않는다(깜빡임/속도 저하 방지).
     return;
   }
 
+  hideGenRangeCompareList();
   // 기본(기존) 렌더
   if (hint) {
     hint.textContent = treeGenFilter

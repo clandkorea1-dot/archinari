@@ -70,6 +70,205 @@
   display: block;
 }
 
+/* -----------------------------
+ * 가계도(1-10세) 비교용 렌더링
+ * ----------------------------- */
+.tree-compare-scroll {
+  max-height: min(64vh, 560px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tree-gen1to10-mini-card {
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(120, 113, 108, 0.22);
+  background: #efe4d6; /* 참고 이미지의 베이지 바탕 */
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
+
+.tree-gen1to10-mini-card-head {
+  background: #1b7f5a; /* 참고 이미지의 진녹색 헤더 톤 */
+  color: rgba(255, 255, 255, 0.96);
+  padding: 12px 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.tree-gen1to10-mini-card-kicker {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  opacity: 0.95;
+}
+
+.tree-gen1to10-mini-card-title {
+  font-family: "Noto Sans KR", "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.tree-gen1to10-mini-card-body {
+  padding: 12px 14px 14px;
+  border-top: 1px solid rgba(120, 113, 108, 0.25); /* 구분선 느낌 */
+  color: rgba(41, 37, 36, 0.9);
+  font-size: 13px;
+  line-height: 1.45;
+  min-height: 64px;
+}
+
+.tree-compare-list {
+  position: relative;
+  padding: 6px 12px 10px 12px;
+  /* 라인/원 공통 중심축 */
+  /* (요청) 화면의 약 30% 지점으로 이동 */
+  --tree-compare-rail-x: 30%;
+  --tree-compare-rail-w: 8px;
+  --tree-compare-rail-left: calc(var(--tree-compare-rail-x) - (var(--tree-compare-rail-w) / 2));
+  --tree-compare-dot-size: 10px;
+  --tree-compare-row-h: 46px; /* 세대 간 기본 y 간격(균등) - 추가 10% 축소 */
+}
+
+.tree-compare-list::before {
+  content: "";
+  position: absolute;
+  left: var(--tree-compare-rail-left);
+  top: 10px;
+  bottom: 10px;
+  width: var(--tree-compare-rail-w);
+  border-radius: 999px;
+  background: #16a34a; /* 한 색상으로 주욱 */
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.tree-compare-gen-block {
+  position: relative;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  min-height: var(--tree-compare-row-h);
+  /* 라인/원(30% 지점) 오른쪽에서 본문 시작 */
+  padding-left: calc(var(--tree-compare-rail-x) + 22px);
+}
+
+/* 세대 마커(1세당 1개): 컬러 라인 "안"의 얇은 원 */
+.tree-compare-genmark {
+  position: absolute;
+  /* 원의 중심축이 선의 중심축(rail-x)과 정확히 일치 */
+  left: calc(var(--tree-compare-rail-x) - 1%);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--tree-compare-dot-size);
+  height: var(--tree-compare-dot-size);
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.1);
+  z-index: 2;
+}
+
+.tree-compare-item {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  padding: 10px 8px 10px 0;
+}
+
+.tree-compare-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.tree-compare-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.2;
+}
+.tree-compare-gen {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: rgba(87, 83, 78, 0.9);
+}
+.tree-compare-name {
+  font-size: 13px;
+  font-weight: 900;
+  color: #1c1917;
+  word-break: keep-all;
+}
+.tree-compare-meta {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.25;
+  color: rgba(28, 25, 23, 0.92);
+  white-space: pre-wrap;
+}
+.tree-compare-meta .muted {
+  color: rgba(120, 113, 108, 0.72);
+}
+
+/* 형제 표시: 같은 세대에서 좌→우 가로 나열 */
+.tree-compare-sibs {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin: 6px 0 8px;
+  padding: 2px 0;
+  align-items: flex-start;
+}
+
+.tree-compare-sib-item {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.tree-compare-sib-item + .tree-compare-sib-item {
+  padding-left: 16px;
+}
+
+/* 형제 간 '--' 점선 연결 표시 */
+.tree-compare-sib-item + .tree-compare-sib-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.6em; /* 'n세' 숫자 표시의 가운데 높이 */
+  width: 12px;
+  height: 0;
+  border-top: 2px dashed rgba(87, 83, 78, 0.7);
+  opacity: 0.9;
+}
+
+.tree-compare-sib-item .tree-compare-title {
+  gap: 6px;
+}
+
+.tree-compare-sib-item .tree-compare-name {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.tree-compare-sib-item .tree-compare-meta {
+  margin-top: 2px;
+  font-size: 10.5px;
+}
+
 /* 가계도: 좌측 하단 미니 줌 버튼 */
 .tree-zoom-mini {
   position: sticky;
@@ -104,7 +303,15 @@
   display: none;
 }
 #view-tree.gen21-tight .rounded-2xl {
-  padding-top: 12px;
+  padding-top: 6px;
+}
+
+/* 1-10세 전용 화면: 헤더 아래로 바짝 */
+#view-tree.gen1to10-tight {
+  margin-top: -10px;
+}
+#view-tree.gen1to10-tight .rounded-2xl {
+  padding-top: 6px;
 }
 
 /* 32세 이후: 명단 그리드(인원 증가 대비) */
