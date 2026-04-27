@@ -112,6 +112,8 @@ const SELECTED_PERSON_STORAGE_KEY = "ucheongim_selectedPersonId_v1";
 let treeGenFilter = null; // { min:number, max:number } | null
 // 1-10세 등 genRange 결과 캐시(세션)
 const genRangePeopleCache = new Map(); // "min-max" -> people[]
+// genRange 네트워크 중복 요청 방지(구간 버튼 연타/전환)
+const genRangePeopleInFlight = new Map(); // "min-max" -> Promise<people[] | null>
 
 // 가계도 표시 모드(특정 세대 구간 전용 레이아웃 등)
 let treeViewMode = "default"; // "default" | "genrange" | "genrange_32_plus" 등
@@ -124,6 +126,10 @@ let lastGen32PanelPeople = [];
 // updateTreeView 비동기 경쟁(빠른 탭 전환/재시도) 방지용 토큰
 let treeViewUpdateSeq = 0;
 
+// 11-20세 전용: 인터랙티브 체인(드래그 물리) 상태
+let gen11ChainSim = null;
+let gen11ChainLastSizeKey = "";
+
 /** 21–25세 상단 연표(확정): 세대 띠색 + 원형 노드 + 계단 연선. */
 const GEN2125_ROW_BAND_COLORS = ["#dbeafe", "#fce7f3", "#dcfce7", "#fef9c3", "#ede9fe"];
 
@@ -133,6 +139,196 @@ let gen2125LayoutCacheModel = null;
 function invalidateGen2125LayoutCache() {
   gen2125LayoutCacheKey = "";
   gen2125LayoutCacheModel = null;
+}
+
+function setGen11ChainDetail(title, body) {
+  const host = document.getElementById("tree-gen11-chain-detail");
+  if (!host) return;
+  const t = host.querySelector(".tree-gen11-chain-detail-title");
+  const b = host.querySelector(".tree-gen11-chain-detail-body");
+  if (t) t.textContent = title || "선택됨";
+  if (b) b.textContent = body || "";
+}
+
+function stopGen11ChainSim() {
+  try {
+    if (gen11ChainSim) gen11ChainSim.stop();
+  } catch {
+    // ignore
+  }
+  gen11ChainSim = null;
+  gen11ChainLastSizeKey = "";
+}
+
+function renderGen11InteractiveChain() {
+  const section = document.getElementById("tree-gen11-chain");
+  const svgEl = document.getElementById("tree-gen11-chain-svg");
+  if (!section || !svgEl || typeof d3 === "undefined") return;
+
+  const rect = svgEl.getBoundingClientRect();
+  const w = Math.max(280, Math.floor(rect.width || 0));
+  const h = Math.max(220, Math.floor(rect.height || 0));
+  const sizeKey = `${w}x${h}`;
+  if (sizeKey === gen11ChainLastSizeKey && gen11ChainSim) return;
+  gen11ChainLastSizeKey = sizeKey;
+
+  const NODE_DETAILS = {
+    "아치나리": "아치나리 관련 메모(예시) — 1~2줄 설명을 넣을 수 있습니다.",
+    "예안": "예안 관련 메모(예시) — 클릭 시 이 설명이 표시됩니다.",
+    "소수박물관": "소수박물관: 참고 자료/방문 기록 등을 요약해 표시합니다.",
+    "반남박씨": "반남박씨: 관련 인물/혼인/기록 등 간단 요약.",
+    "김결": "김결: 관련 기록 요약(1~2줄).",
+    "예안 향록": "예안 향록: 문헌/기록 요약(1~2줄).",
+    "문과": "문과: 과거 급제 관련 요약(1~2줄).",
+    "이현보": "이현보: 인물 관련 요약(1~2줄).",
+    "월천 조목": "월천 조목: 관련 사항 요약(1~2줄).",
+    "의성 비봉산": "의성 비봉산: 장소/연관 기록 요약(1~2줄).",
+  };
+
+  // 노드 정의: 큰 원 2개 + 각 큰 원에 작은 원들 부착
+  const big1 = { id: "아치나리", label: "아치나리", r: 23, big: true };
+  const big2 = { id: "예안", label: "예안", r: 23, big: true };
+  const smallLeft = ["소수박물관", "반남박씨", "김결"].map((t) => ({ id: t, label: t, r: 13 }));
+  const smallRight = ["예안 향록", "문과", "이현보", "월천 조목", "의성 비봉산"].map((t) => ({ id: t, label: t, r: 13 }));
+  const nodes = [big1, big2, ...smallLeft, ...smallRight].map((n) => ({ ...n }));
+
+  // 링크(사슬): big1-big2 + big1-소형들 + big2-소형들
+  const links = [
+    { source: big1.id, target: big2.id, dist: 110 },
+    ...smallLeft.map((n) => ({ source: big1.id, target: n.id, dist: 64 })),
+    ...smallRight.map((n) => ({ source: big2.id, target: n.id, dist: 64 })),
+  ];
+
+  // 초기 배치
+  const cx1 = w * 0.34;
+  const cx2 = w * 0.66;
+  const cy = h * 0.5;
+  nodes.forEach((n) => {
+    if (n.id === big1.id) { n.x = cx1; n.y = cy; return; }
+    if (n.id === big2.id) { n.x = cx2; n.y = cy; return; }
+    const side = smallLeft.some((s) => s.id === n.id) ? "L" : "R";
+    const baseX = side === "L" ? cx1 : cx2;
+    const idx = side === "L" ? smallLeft.findIndex((s) => s.id === n.id) : smallRight.findIndex((s) => s.id === n.id);
+    const count = side === "L" ? smallLeft.length : smallRight.length;
+    const ang = (-Math.PI / 2) + ((idx + 1) * Math.PI) / (count + 1); // 위→아래 반원
+    n.x = baseX + Math.cos(ang) * 78;
+    n.y = cy + Math.sin(ang) * 54;
+  });
+
+  const svg = d3.select(svgEl);
+  svg.selectAll("*").remove();
+  svg.attr("viewBox", `0 0 ${w} ${h}`);
+
+  const g = svg.append("g");
+
+  const linkSel = g
+    .append("g")
+    .attr("stroke", "rgba(22, 101, 52, 0.32)") // seal-ish
+    .attr("stroke-width", 1.6)
+    .attr("stroke-linecap", "round")
+    .selectAll("line")
+    .data(links)
+    .join("line")
+    .attr("stroke-dasharray", "4 6");
+
+  const nodeG = g
+    .append("g")
+    .selectAll("g")
+    .data(nodes, (d) => d.id)
+    .join("g")
+    .attr("class", "gen11-chain-node")
+    .style("cursor", "grab");
+
+  const circle = nodeG
+    .append("circle")
+    .attr("r", (d) => d.r)
+    .attr("fill", "rgba(255, 255, 255, 0.98)")
+    .attr("stroke", (d) => (d.big ? "rgba(22, 101, 52, 0.55)" : "rgba(22, 101, 52, 0.36)"))
+    .attr("stroke-width", (d) => (d.big ? 2.0 : 1.6));
+
+  nodeG
+    .append("text")
+    .attr("text-anchor", "middle")
+    .attr("dominant-baseline", "middle")
+    .attr("fill", "rgba(15, 23, 42, 0.9)")
+    .attr("font-weight", (d) => (d.big ? 900 : 800))
+    .attr("font-size", (d) => (d.big ? 12 : 10))
+    .text((d) => String(d.label || "").slice(0, 5));
+
+  let selectedId = "";
+  const selectNode = (id) => {
+    selectedId = String(id || "");
+    circle.attr("stroke", (d) => {
+      const base = d.big ? "rgba(22, 101, 52, 0.55)" : "rgba(22, 101, 52, 0.36)";
+      return d.id === selectedId ? "rgba(5, 150, 105, 0.95)" : base; // emerald
+    });
+    circle.attr("stroke-width", (d) => (d.id === selectedId ? 2.6 : d.big ? 2.0 : 1.6));
+    const title = selectedId || "노드를 선택하세요";
+    const body = NODE_DETAILS[selectedId] || "설명이 등록되어 있지 않습니다.";
+    setGen11ChainDetail(title, body);
+  };
+
+  nodeG.on("click", (event, d) => {
+    event?.stopPropagation?.();
+    selectNode(d.id);
+  });
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const ticked = () => {
+    linkSel
+      .attr("x1", (d) => d.source.x)
+      .attr("y1", (d) => d.source.y)
+      .attr("x2", (d) => d.target.x)
+      .attr("y2", (d) => d.target.y);
+
+    nodeG.attr("transform", (d) => {
+      d.x = clamp(d.x, d.r + 6, w - d.r - 6);
+      d.y = clamp(d.y, d.r + 6, h - d.r - 6);
+      return `translate(${d.x},${d.y})`;
+    });
+  };
+
+  const drag = d3
+    .drag()
+    .on("start", (event, d) => {
+      nodeG.style("cursor", "grabbing");
+      // 드래그 시 즉시 반응하도록 alpha를 강하게 올린다.
+      if (!event.active) sim.alpha(0.95).alphaTarget(0.35).restart();
+      d.fx = d.x;
+      d.fy = d.y;
+    })
+    .on("drag", (event, d) => {
+      // (중요) fx/fy만 바꾸면 일부 환경에서 반응이 둔할 수 있어 x/y도 즉시 갱신
+      d.x = event.x;
+      d.y = event.y;
+      d.fx = event.x;
+      d.fy = event.y;
+    })
+    .on("end", (event, d) => {
+      nodeG.style("cursor", "grab");
+      if (!event.active) sim.alphaTarget(0);
+      d.fx = null;
+      d.fy = null;
+    });
+
+  // 드래그는 텍스트/원 포함 전체 노드 그룹에 적용
+  nodeG.call(drag);
+
+  const sim = d3
+    .forceSimulation(nodes)
+    .force(
+      "link",
+      d3.forceLink(links).id((d) => d.id).distance((d) => d.dist || 64).strength(0.2)
+    )
+    .force("charge", d3.forceManyBody().strength(-140))
+    .force("collide", d3.forceCollide().radius((d) => d.r + 8).iterations(2))
+    .force("center", d3.forceCenter(w / 2, h / 2))
+    .on("tick", ticked);
+
+  gen11ChainSim = sim;
+  // 기본 선택(첫 큰 원)
+  selectNode(big1.id);
 }
 
 /** 25세 시조 후보(4명)·힌트·gen21SelectedRootId 보정 — 레이아웃 캐시 히트 시에만 호출해도 됨 */
@@ -2858,13 +3054,6 @@ async function loadClanTab() {
     loadVoteResponseSheet(),
     loadVoteSection(),
   ]);
-  // 연혁은 기존 history를 유지(있으면 표시)
-  try {
-    const histJson = await apiGetSilent({ action: "history", limit: "20" });
-    renderMoreHistory(histJson);
-  } catch {
-    // ignore
-  }
 }
 
 function renderHomeNotices(data) {
@@ -3220,7 +3409,11 @@ function initBottomNav() {
 function initHeaderTabs() {
   const byId = (id) => document.getElementById(id);
   byId("hdr-tab-home")?.addEventListener("click", () => showView("view-home"));
-  byId("hdr-tab-tree")?.addEventListener("click", () => showView("view-tree"));
+  byId("hdr-tab-tree")?.addEventListener("click", () => {
+    // (요청) 헤더의 "가계도"로 진입하면 항상 1-10세부터 보여준다.
+    setTreeGenFilter(1, 10);
+    showView("view-tree");
+  });
   byId("hdr-tab-map")?.addEventListener("click", () => showView("view-map"));
   byId("hdr-tab-more")?.addEventListener("click", () => showView("view-more"));
 
@@ -3308,14 +3501,103 @@ function setMoreCollapsed(key, collapsed) {
 }
 
 function initMoreExpanders() {
-  document.getElementById("view-more")?.addEventListener("click", (e) => {
+  const host = document.getElementById("view-more");
+  const modal = document.getElementById("more-fullscreen");
+  const modalBody = document.getElementById("more-fullscreen-body");
+  const modalTitle = document.getElementById("more-fullscreen-title");
+  const closeBtn = document.getElementById("more-fullscreen-close");
+
+  if (!host || !modal || !modalBody || !modalTitle || !closeBtn) return;
+
+  let moved = null; // { key, node, placeholder, wasCollapsed, btn }
+  let prevBottomNavDisplay = null;
+
+  const applyModalOffsets = () => {
+    const hdr = document.getElementById("app-header");
+    const nav = document.getElementById("bottom-nav");
+    const h = hdr ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
+    const navHidden =
+      !nav || nav.style.display === "none" || nav.hidden || nav.getAttribute("aria-hidden") === "true";
+    const b = navHidden ? 0 : Math.ceil(nav.getBoundingClientRect().height);
+    // 헤더/하단탭은 그대로 두고, 그 사이만 전체화면으로 사용
+    modal.style.top = `${h}px`;
+    modal.style.bottom = `${b}px`;
+  };
+
+  const closeModal = () => {
+    if (!moved) {
+      modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
+      return;
+    }
+    const { node, placeholder, wasCollapsed, btn } = moved;
+    try {
+      const parent = placeholder?.parentNode;
+      if (parent && node) parent.insertBefore(node, placeholder);
+      placeholder?.remove?.();
+    } catch {
+      // ignore
+    }
+    if (node) node.classList.toggle("is-collapsed", !!wasCollapsed);
+    if (btn) btn.setAttribute("aria-expanded", "false");
+    const nav = document.getElementById("bottom-nav");
+    if (nav) {
+      if (prevBottomNavDisplay == null) nav.style.removeProperty("display");
+      else nav.style.display = prevBottomNavDisplay;
+      nav.removeAttribute("aria-hidden");
+    }
+    prevBottomNavDisplay = null;
+    modalBody.innerHTML = "";
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+    moved = null;
+  };
+
+  const openModalFor = (btn, key) => {
+    const node = document.querySelector(`[data-more-body="${key}"]`);
+    if (!node) return;
+    const section = btn.closest("section");
+    const titleText = String(section?.querySelector?.(".more-bento-section-tab")?.textContent || "").trim();
+    modalTitle.textContent = titleText || "전체화면";
+
+    const wasCollapsed = node.classList.contains("is-collapsed");
+    node.classList.remove("is-collapsed");
+
+    const placeholder = document.createElement("div");
+    placeholder.setAttribute("data-more-fullscreen-placeholder", key);
+    node.parentNode?.insertBefore(placeholder, node);
+    modalBody.appendChild(node);
+
+    btn.setAttribute("aria-expanded", "true");
+    moved = { key, node, placeholder, wasCollapsed, btn };
+
+    const nav = document.getElementById("bottom-nav");
+    if (nav) {
+      prevBottomNavDisplay = nav.style.display || "";
+      nav.style.display = "none";
+      nav.setAttribute("aria-hidden", "true");
+    }
+    applyModalOffsets();
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+  };
+
+  host.addEventListener("click", (e) => {
     const btn = e.target?.closest?.(".more-expand-btn");
     if (!btn) return;
     const key = btn.getAttribute("data-more-toggle");
     if (!key) return;
-    const body = document.querySelector(`[data-more-body="${key}"]`);
-    const isCollapsed = body?.classList?.contains("is-collapsed");
-    setMoreCollapsed(key, !isCollapsed);
+    if (moved) closeModal();
+    openModalFor(btn, key);
+  });
+
+  closeBtn.addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => {
+    // 배경 클릭 시 닫기(패널 내부 클릭은 무시)
+    if (e.target === modal) closeModal();
+  });
+  window.addEventListener("resize", () => {
+    if (!modal.classList.contains("hidden")) applyModalOffsets();
   });
 }
 
@@ -4455,7 +4737,10 @@ function setTreeGenFilter(min, max) {
     } catch {
       // ignore
     }
-    void updateTreeView();
+    // (체감 개선) 버튼 상태/UI를 먼저 그린 뒤, 다음 프레임에 무거운 렌더링을 수행
+    requestAnimationFrame(() => {
+      void updateTreeView();
+    });
   }
 }
 
@@ -4463,15 +4748,30 @@ async function fetchGenRangePeople(min, max) {
   // 서버에 action=genRange 구현을 권장. 없으면 null.
   const key = `${Number(min)}-${Number(max)}`;
   if (genRangePeopleCache.has(key)) return genRangePeopleCache.get(key);
-  const json = await apiGetWait(
-    { action: "genRange", min: String(min), max: String(max) },
-    { maxAttempts: 8, retryDelayMs: 900 }
-  );
-  if (!json || typeof json !== "object") return null;
-  const list = normalizeList(json, ["genRange", "people", "rows", "data", "items", "list"]);
-  const out = Array.isArray(list) ? list : null;
-  if (out) genRangePeopleCache.set(key, out);
-  return out;
+  if (genRangePeopleInFlight.has(key)) return genRangePeopleInFlight.get(key);
+  const p = (async () => {
+    const json = await apiGetWait(
+      { action: "genRange", min: String(min), max: String(max) },
+      { maxAttempts: 8, retryDelayMs: 900 }
+    );
+    if (!json || typeof json !== "object") return null;
+    const list = normalizeList(json, ["genRange", "people", "rows", "data", "items", "list"]);
+    const out = Array.isArray(list) ? list : null;
+    if (out) genRangePeopleCache.set(key, out);
+    return out;
+  })()
+    .catch(() => null)
+    .finally(() => genRangePeopleInFlight.delete(key));
+  genRangePeopleInFlight.set(key, p);
+  return p;
+}
+
+function fetchGenRangePeopleInBackground(min, max) {
+  const key = `${Number(min)}-${Number(max)}`;
+  if (genRangePeopleCache.has(key)) return;
+  if (genRangePeopleInFlight.has(key)) return;
+  // 기다리지 않고 시작만 한다(도착하면 캐시에 들어감)
+  void fetchGenRangePeople(min, max);
 }
 
 function pickExtraSmallLine(row) {
@@ -6443,6 +6743,7 @@ function syncTreeDualPanelChrome() {
   const titleHeader = document.getElementById("tree-title-header");
   const viewTree = document.getElementById("view-tree");
   const hint = document.getElementById("tree-hint");
+  const gen11Chain = document.getElementById("tree-gen11-chain");
   // (중요) 21-31/32+ 전용 화면에서는 기본(dual) 영역 자체를 숨긴다.
   // baseWrap만 숨기면 dualWrap이 남아 "빈 박스"처럼 보일 수 있다.
   if (dualWrap) dualWrap.classList.toggle("hidden", g);
@@ -6456,6 +6757,11 @@ function syncTreeDualPanelChrome() {
     if (g21) hint.textContent = "";
     hint.classList.toggle("hidden", !!g21);
   }
+
+  // 11-20세 전용 체인 박스는 해당 모드에서만 노출
+  const showGen11Chain = treeViewMode === "genrange_11_20" && !!treeGenFilter;
+  if (gen11Chain) gen11Chain.classList.toggle("hidden", !showGen11Chain);
+  if (!showGen11Chain) stopGen11ChainSim();
 }
 
 function buildChildrenByFatherMapFromAnnotated(annotatedItems) {
@@ -7797,6 +8103,13 @@ async function updateTreeView() {
   if (!svgEl || !wrap || typeof d3 === "undefined") return;
 
   syncTreeDualPanelChrome();
+  // 11-20세 전용 체인(하단 상호작용): 화면에 보일 때만 설치
+  if (treeViewMode === "genrange_11_20") {
+    requestAnimationFrame(() => {
+      // SVG가 레이아웃된 뒤 실제 폭/높이를 읽어야 함
+      renderGen11InteractiveChain();
+    });
+  }
 
   if (!lastSearchRows.length) {
     hideGenRangeCompareList();
@@ -7824,11 +8137,28 @@ async function updateTreeView() {
       (treeViewMode === "genrange_1_10" || treeViewMode === "genrange_11_20" || treeViewMode === "genrange_21_31") &&
       treeGenFilter
     ) {
-      let people = null;
-      try {
-        people = await fetchGenRangePeople(treeGenFilter.min, treeGenFilter.max);
-      } catch {
-        people = null;
+      const key = `${Number(treeGenFilter.min)}-${Number(treeGenFilter.max)}`;
+      let people = genRangePeopleCache.get(key) || null;
+      if (!people) {
+        // (체감 개선) 기다리지 말고 즉시 로딩 상태를 보여준 뒤, 백그라운드로 가져온다.
+        if (hint && treeViewMode !== "genrange_21_31") {
+          hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (불러오는 중…)`;
+        }
+        const svg = d3.select(svgEl);
+        svg.selectAll("*").remove();
+        svg
+          .append("text")
+          .attr("x", "50%")
+          .attr("y", "50%")
+          .attr("text-anchor", "middle")
+          .attr("fill", "#78716c")
+          .attr("font-size", 12.5)
+          .text("불러오는 중…");
+        fetchGenRangePeopleInBackground(treeGenFilter.min, treeGenFilter.max);
+        setTimeout(() => {
+          if (seq === treeViewUpdateSeq) void updateTreeView();
+        }, 220);
+        return;
       }
       if (seq !== treeViewUpdateSeq) return;
       if (people && people.length) {
@@ -7885,7 +8215,28 @@ async function updateTreeView() {
       hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (전용 트리)`;
     }
     // 서버 genRange가 있으면 사용, 없으면 현재 검색 결과에서만 구성
-    let people = await fetchGenRangePeople(treeGenFilter.min, treeGenFilter.max);
+    const key = `${Number(treeGenFilter.min)}-${Number(treeGenFilter.max)}`;
+    let people = genRangePeopleCache.get(key) || null;
+    if (!people) {
+      if (hint && treeViewMode !== "genrange_21_31") {
+        hint.textContent = `표시 범위: ${treeGenFilter.min}-${treeGenFilter.max}세 (불러오는 중…)`;
+      }
+      const svg = d3.select(svgEl);
+      svg.selectAll("*").remove();
+      svg
+        .append("text")
+        .attr("x", "50%")
+        .attr("y", "50%")
+        .attr("text-anchor", "middle")
+        .attr("fill", "#78716c")
+        .attr("font-size", 12.5)
+        .text("불러오는 중…");
+      fetchGenRangePeopleInBackground(treeGenFilter.min, treeGenFilter.max);
+      setTimeout(() => {
+        if (seq === treeViewUpdateSeq) void updateTreeView();
+      }, 220);
+      return;
+    }
     if (!people) people = lastSearchRows;
     if (seq !== treeViewUpdateSeq) return;
     if (!people || !people.length) {

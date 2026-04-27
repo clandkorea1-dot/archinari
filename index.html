@@ -156,7 +156,7 @@
             <div class="paper-box-head">
               <div class="flex items-center justify-between gap-3">
                 <div>
-                  <h2 class="paper-title">본인 확인</h2>
+                  <h2 class="paper-title-tab">본인 확인</h2>
                   <p class="paper-sub">
                     (성을 제외한) 이름을 입력하면 세보를 불러옵니다.
                   </p>
@@ -214,7 +214,7 @@
           <!-- 2) 직계 조상 연결 -->
           <section class="paper-box mt-5">
             <div class="paper-box-head">
-              <h2 class="paper-title">직계 조상 연결</h2>
+              <h2 class="paper-title-tab">직계 조상 연결</h2>
               <p class="paper-sub text-[11px] leading-snug">
                 본인→시조 부계. (숫자세)는 세대. 작은 글자·줄바꿈으로 전체 표시.
               </p>
@@ -259,7 +259,7 @@
           <!-- 3) 8촌 친척 -->
           <section class="paper-box mt-5" aria-labelledby="eight-kin-box-title">
             <div class="paper-box-head">
-              <h2 id="eight-kin-box-title" class="paper-title">8촌 친척</h2>
+              <h2 id="eight-kin-box-title" class="paper-title-tab">8촌 친척</h2>
               <p class="paper-sub text-[11px] leading-snug">
                 시트 기준 · 왼쪽→오른쪽 세대. 열마다 부친 ID 순 정렬, 자녀는 녹색(seal) 실선으로 연결. 드래그·휠 확대.
               </p>
@@ -273,7 +273,7 @@
           <!-- 4) 촌수 계산 -->
           <section class="paper-box mt-5" aria-labelledby="kinship-calc-title">
             <div class="paper-box-head">
-              <h2 id="kinship-calc-title" class="paper-title">촌수 계산</h2>
+              <h2 id="kinship-calc-title" class="paper-title-tab">촌수 계산</h2>
               <p class="paper-sub">
                 문중원ID 또는 이름(성 제외) 입력. 동명이인이면 아래에서 한 분만 선택.
               </p>
@@ -375,6 +375,19 @@
             <!-- 1–10세 비교용은 JS에서 "필요할 때만" DOM에 마운트한다(다른 모드엔 제거). -->
             <div id="tree-compare-mount" class="w-full"></div>
           </div>
+
+          <!-- 11-20세 전용: 하단 인터랙티브 체인(원/사슬 + 상세 설명) -->
+          <section id="tree-gen11-chain" class="hidden mt-3" aria-label="11-20세 체인 박스">
+            <div class="tree-gen11-chain-frame">
+              <div class="tree-gen11-chain-canvas">
+                <svg id="tree-gen11-chain-svg" class="tree-gen11-chain-svg" role="img" aria-label="11-20세 상호작용 체인"></svg>
+              </div>
+              <div id="tree-gen11-chain-detail" class="tree-gen11-chain-detail" aria-live="polite">
+                <div class="tree-gen11-chain-detail-title">노드를 선택하세요</div>
+                <div class="tree-gen11-chain-detail-body">원을 클릭하면 여기에 1–2줄 설명이 표시됩니다.</div>
+              </div>
+            </div>
+          </section>
 
           <!-- 21-31세 전용(상단/하단 2박스) -->
           <section id="tree-gen21-wrap" class="hidden space-y-4">
@@ -489,19 +502,22 @@
               fetchpriority="low"
             />
           </div>
-          <div class="more-bento-dash" aria-hidden="true"></div>
-          <p class="more-bento-status">표시: 문중 콘텐츠</p>
 
           <section id="more-charter" class="more-bento-cell" aria-labelledby="more-charter-title">
+            <div class="more-bento-section-kick">
+              <div class="more-bento-section-line" aria-hidden="true"></div>
+              <h3 id="more-charter-title" class="more-bento-section-tab">정관</h3>
+            </div>
             <div class="more-bento-headrow">
-              <h3 id="more-charter-title" class="more-bento-h3">정관</h3>
               <button
                 type="button"
                 class="more-expand-btn"
                 data-more-toggle="more-charter"
                 aria-expanded="false"
-                aria-label="정관 펼쳐보기/접기"
-              ></button>
+                aria-label="정관 전체화면으로 보기"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">open_in_full</span>
+              </button>
             </div>
             <p id="more-charter-hint" class="more-bento-hint"></p>
             <div class="more-collapsible is-collapsed" data-more-body="more-charter">
@@ -510,15 +526,20 @@
           </section>
 
           <section id="more-property" class="more-bento-cell" aria-labelledby="more-property-title">
+            <div class="more-bento-section-kick">
+              <div class="more-bento-section-line" aria-hidden="true"></div>
+              <h3 id="more-property-title" class="more-bento-section-tab">문중재산</h3>
+            </div>
             <div class="more-bento-headrow">
-              <h3 id="more-property-title" class="more-bento-h3">문중재산</h3>
               <button
                 type="button"
                 class="more-expand-btn"
                 data-more-toggle="more-property"
                 aria-expanded="false"
-                aria-label="문중재산 펼쳐보기/접기"
-              ></button>
+                aria-label="문중재산 전체화면으로 보기"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">open_in_full</span>
+              </button>
             </div>
             <p id="more-property-hint" class="more-bento-hint"></p>
             <div class="more-collapsible is-collapsed" data-more-body="more-property">
@@ -527,15 +548,20 @@
           </section>
 
           <section id="more-notice" class="more-bento-cell" aria-labelledby="clan-notice-title">
+            <div class="more-bento-section-kick">
+              <div class="more-bento-section-line" aria-hidden="true"></div>
+              <h3 id="clan-notice-title" class="more-bento-section-tab">공지사항</h3>
+            </div>
             <div class="more-bento-headrow">
-              <h3 id="clan-notice-title" class="more-bento-h3">공지사항</h3>
               <button
                 type="button"
                 class="more-expand-btn"
                 data-more-toggle="more-notice"
                 aria-expanded="false"
-                aria-label="공지사항 펼쳐보기/접기"
-              ></button>
+                aria-label="공지사항 전체화면으로 보기"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">open_in_full</span>
+              </button>
             </div>
             <p id="clan-notice-hint" class="more-bento-hint"></p>
             <div class="more-collapsible is-collapsed" data-more-body="more-notice">
@@ -543,28 +569,21 @@
             </div>
           </section>
 
-          <section
-            id="more-history-card"
-            class="more-bento-cell"
-            aria-labelledby="clan-history-title"
-          >
-            <div class="more-bento-headrow more-bento-headrow--sheetonly">
-              <h3 id="clan-history-title" class="more-bento-h3">연혁·사료</h3>
-            </div>
-            <p id="more-history-hint" class="more-bento-hint"></p>
-            <div id="more-history-body" class="more-bento-body mt-1 space-y-2 text-sm text-[#1a2e2e]/90"></div>
-          </section>
-
           <section id="more-vote" class="more-bento-cell" aria-labelledby="clan-vote-title">
+            <div class="more-bento-section-kick">
+              <div class="more-bento-section-line" aria-hidden="true"></div>
+              <h3 id="clan-vote-title" class="more-bento-section-tab">문중원투표</h3>
+            </div>
             <div class="more-bento-headrow">
-              <h3 id="clan-vote-title" class="more-bento-h3">문중원투표</h3>
               <button
                 type="button"
                 class="more-expand-btn"
                 data-more-toggle="more-vote"
                 aria-expanded="false"
-                aria-label="문중원투표 펼쳐보기/접기"
-              ></button>
+                aria-label="문중원투표 전체화면으로 보기"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">open_in_full</span>
+              </button>
             </div>
             <p id="vote-hint" class="more-bento-hint"></p>
             <div class="more-collapsible is-collapsed" data-more-body="more-vote">
@@ -606,7 +625,10 @@
           </section>
 
           <section class="more-bento-cell more-bento-cell-muted" aria-labelledby="more-guide-title">
-            <h3 id="more-guide-title" class="more-bento-h3">이용 안내</h3>
+            <div class="more-bento-section-kick">
+              <div class="more-bento-section-line" aria-hidden="true"></div>
+              <h3 id="more-guide-title" class="more-bento-section-tab">이용 안내</h3>
+            </div>
             <ul class="more-bento-body mt-2 list-inside list-disc space-y-2 text-sm text-[#1a2e2e]/85">
               <li>세보 검색은 홈에서 합니다.</li>
               <li>가계도는 서버 <code class="text-xs">getTree</code> 또는 검색 결과 연결로 표시됩니다.</li>
@@ -620,6 +642,19 @@
             </button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 아천문중: 박스 내용 전체화면(모바일: 헤더/하단탭 제외) -->
+    <div id="more-fullscreen" class="more-fullscreen hidden" aria-hidden="true">
+      <div class="more-fullscreen-panel" role="dialog" aria-modal="true" aria-labelledby="more-fullscreen-title">
+        <div class="more-fullscreen-head">
+          <div id="more-fullscreen-title" class="more-fullscreen-title">전체화면</div>
+          <button type="button" id="more-fullscreen-close" class="more-fullscreen-close" aria-label="전체화면 닫기">
+            <span class="material-symbols-outlined" aria-hidden="true">close_fullscreen</span>
+          </button>
+        </div>
+        <div id="more-fullscreen-body" class="more-fullscreen-body"></div>
       </div>
     </div>
 
