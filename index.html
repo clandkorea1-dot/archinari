@@ -468,24 +468,65 @@
 
       <!-- 선조의 발자취 (지도) -->
       <div id="view-map" class="view-panel hidden flex flex-col">
-        <header class="mb-4 text-center">
-          <h2 class="text-xl font-bold text-ink-900">선조의 발자취</h2>
-          <p class="mt-1 text-sm text-stone-600">
-            문중 유적·행적이 담긴 장소를 지도로 봅니다.
-          </p>
+        <header class="mb-2 text-center">
+          <p class="text-sm text-stone-600">선조의 행적을 지도로 봅니다.</p>
         </header>
-        <div class="relative min-h-[320px] w-full flex-1 overflow-hidden rounded-2xl border border-stone-200 shadow-sm">
-          <div id="map-leaflet" class="z-0 min-h-[320px] h-full w-full"></div>
+        <div
+          class="relative w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
+          style="aspect-ratio: 4 / 3; max-height: min(52vh, 380px)"
+        >
+          <div
+            id="map-leaflet"
+            data-static-map="true"
+            class="z-0 h-full w-full bg-white"
+            role="img"
+            aria-label="선조의 발자취 지도 이미지"
+          >
+            <img
+              src="assets/footprints-map.png?v=1"
+              id="map-static-inline-img"
+              class="h-full w-full object-contain"
+              alt="선조의 발자취 지도"
+              decoding="async"
+              fetchpriority="low"
+            />
+          </div>
           <button
             type="button"
             id="map-fit-btn"
-            class="absolute bottom-3 right-3 z-[1000] rounded-lg border border-stone-200 bg-white/95 px-2.5 py-1.5 text-xs font-medium text-stone-700 shadow-sm hover:bg-stone-50"
+            class="hidden absolute bottom-3 right-3 z-[1000] rounded-lg border border-stone-200 bg-white/95 px-2.5 py-1.5 text-xs font-medium text-stone-700 shadow-sm hover:bg-stone-50"
             title="마커가 보이도록 맞춤"
           >
             맞춤
           </button>
+          <div class="absolute bottom-3 right-3 z-[1000] flex gap-2">
+            <button
+              type="button"
+              id="map-static-zoom-in"
+              class="rounded-xl border border-stone-200 bg-white/95 px-3 py-2 text-xs font-bold text-stone-800 shadow-sm hover:bg-stone-50"
+              title="단계 확대(최대 2배)"
+            >
+              ＋
+            </button>
+            <button
+              type="button"
+              id="map-static-zoom-out"
+              class="rounded-xl border border-stone-200 bg-white/95 px-3 py-2 text-xs font-bold text-stone-800 shadow-sm hover:bg-stone-50"
+              title="단계 축소(최소 1배)"
+            >
+              －
+            </button>
+            <button
+              type="button"
+              id="map-static-zoom-reset"
+              class="rounded-xl border border-stone-200 bg-white/95 px-3 py-2 text-xs font-bold text-stone-800 shadow-sm hover:bg-stone-50"
+              title="원위치(1배)"
+            >
+              원위치
+            </button>
+          </div>
         </div>
-        <p class="mt-2 text-center text-[11px] text-stone-400">손가락으로 확대·축소·이동 · 맞춤으로 마커 영역 복귀</p>
+        <p class="mt-2 text-center text-[11px] text-stone-400">＋/－로 단계 줌(최대 2배). 줌 상태에서는 드래그로 이동, 원위치로 1배 복귀.</p>
       </div>
 
       <!-- 아천문중: 벤토 그리드(첨부 레퍼런스 톤) — 헤더 4칸 서브메뉴 구조는 유지 -->

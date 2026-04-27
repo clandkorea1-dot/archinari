@@ -3489,6 +3489,171 @@ function initMapFitButton() {
   });
 }
 
+/* ---------- 발자취: 정적 지도(이미지) 단계 줌(인라인, 최대 2배) ---------- */
+
+function initStaticMapInlineZoom() {
+  const host = document.getElementById("map-leaflet");
+  const img = document.getElementById("map-static-inline-img");
+  const btnIn = document.getElementById("map-static-zoom-in");
+  const btnOut = document.getElementById("map-static-zoom-out");
+  const btnReset = document.getElementById("map-static-zoom-reset");
+
+  if (!host || !img) return;
+  if (host.getAttribute("data-static-map") !== "true") return;
+
+  const ZOOM_STEPS = [1, 1.5, 2, 3];
+  let stepIdx = 0;
+  let tx = 0;
+  let ty = 0;
+  let dragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragBaseX = 0;
+  let dragBaseY = 0;
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  function getScale() {
+    return ZOOM_STEPS[clamp(stepIdx, 0, ZOOM_STEPS.length - 1)];
+  }
+
+  function computeClampBounds(scale) {
+    const hb = host.getBoundingClientRect();
+    if (!hb.width || !hb.height) return { maxX: 0, maxY: 0 };
+
+    // contain 상태에서 "fit" 크기를 host 기준으로 추정
+    const imgNaturalW = img.naturalWidth || 4;
+    const imgNaturalH = img.naturalHeight || 3;
+    const imgAspect = imgNaturalW / imgNaturalH;
+    const hostAspect = hb.width / hb.height;
+
+    let fitW = hb.width;
+    let fitH = hb.height;
+    if (imgAspect > hostAspect) fitH = hb.width / imgAspect;
+    else fitW = hb.height * imgAspect;
+
+    const scaledW = fitW * scale;
+    const scaledH = fitH * scale;
+    const maxX = Math.max(0, (scaledW - hb.width) / 2);
+    const maxY = Math.max(0, (scaledH - hb.height) / 2);
+    return { maxX, maxY };
+  }
+
+  function applyTransform() {
+    const scale = getScale();
+    const { maxX, maxY } = computeClampBounds(scale);
+    tx = clamp(tx, -maxX, maxX);
+    ty = clamp(ty, -maxY, maxY);
+    img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    host.style.cursor = scale > 1 ? "grab" : "default";
+    // 줌 상태에서는 스크롤/브라우저 제스처 대신 드래그 이동이 우선되도록
+    host.style.touchAction = scale > 1 ? "none" : "pan-x pan-y";
+  }
+
+  function reset() {
+    stepIdx = 0;
+    tx = 0;
+    ty = 0;
+    applyTransform();
+  }
+
+  function stepIn() {
+    if (stepIdx >= ZOOM_STEPS.length - 1) return;
+    stepIdx += 1;
+    applyTransform();
+  }
+
+  function stepOut() {
+    if (stepIdx <= 0) return;
+    stepIdx -= 1;
+    if (getScale() === 1) {
+      tx = 0;
+      ty = 0;
+    }
+    applyTransform();
+  }
+
+  btnIn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    stepIn();
+  });
+  btnOut?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    stepOut();
+  });
+  btnReset?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    reset();
+  });
+
+  // 드래그 이동(줌 상태에서만)
+  host.addEventListener("pointerdown", (e) => {
+    if (getScale() <= 1.001) return;
+    // 모바일에서 페이지 스크롤로 빠지지 않게
+    e.preventDefault();
+    dragging = true;
+    host.style.cursor = "grabbing";
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragBaseX = tx;
+    dragBaseY = ty;
+    try {
+      host.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+  });
+
+  host.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    if (getScale() <= 1.001) return;
+    e.preventDefault();
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    tx = dragBaseX + dx;
+    ty = dragBaseY + dy;
+    applyTransform();
+  });
+
+  host.addEventListener("pointerup", (e) => {
+    try {
+      host.releasePointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+    dragging = false;
+    host.style.cursor = getScale() > 1 ? "grab" : "default";
+  });
+  host.addEventListener("pointercancel", (e) => {
+    try {
+      host.releasePointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+    dragging = false;
+    host.style.cursor = getScale() > 1 ? "grab" : "default";
+  });
+
+  // 휠: 단계 줌(데스크탑)
+  host.addEventListener(
+    "wheel",
+    (e) => {
+      if (host.getAttribute("data-static-map") !== "true") return;
+      e.preventDefault();
+      if (e.deltaY < 0) stepIn();
+      else stepOut();
+    },
+    { passive: false }
+  );
+
+  // 초기 상태
+  reset();
+  window.addEventListener("resize", () => applyTransform());
+}
+
 /* ---------- 아천문중(정관/재산/공지/투표응답): 요약 + 펼쳐보기 ---------- */
 
 function setMoreCollapsed(key, collapsed) {
@@ -4163,6 +4328,8 @@ function ensureMap() {
   if (typeof L === "undefined") return;
   const el = document.getElementById("map-leaflet");
   if (!el) return;
+  // 발자취 페이지가 정적 이미지 모드면 Leaflet 초기화를 건너뛴다.
+  if (el.getAttribute("data-static-map") === "true") return;
 
   if (!mapInstance) {
     mapInstance = L.map("map-leaflet", {
@@ -8877,6 +9044,7 @@ initMoreExpanders();
 initTreeZoomHosts();
 initTreeMiniZoomButtons();
 initMapFitButton();
+initStaticMapInlineZoom();
 
 // 저장된 기준 인물이 있으면 자동 복원
 try {
