@@ -284,6 +284,8 @@
   /* PPT 느낌의 기본 글꼴/렌더링 */
   font-family: Calibri, Arial, system-ui, "Segoe UI", sans-serif;
   text-rendering: geometricPrecision;
+  /* 글자 크기를 "이 박스" 폭 기준으로 맞추기 */
+  container-type: inline-size;
 }
 
 .tlppt-bg {
@@ -337,8 +339,8 @@
 .tlppt-pill {
   text-align: center;
   font-weight: 900;
-  /* 슬라이드 비율에 맞춰 반응형 크기 */
-  font-size: clamp(11px, 1.45vw, 14px);
+  /* 슬라이드 비율에 맞춰 반응형 크기(컨테이너 폭 기준) */
+  font-size: clamp(11px, 1.45cqw, 14px);
   letter-spacing: -0.01em;
   color: rgba(255, 255, 255, 0.96);
   border-radius: 999px;
@@ -349,7 +351,7 @@
 
 .tlppt-body {
   resize: none;
-  font-size: clamp(9px, 1.05vw, 10.5px);
+  font-size: clamp(9px, 1.05cqw, 10.5px);
   line-height: 1.4;
   color: rgba(31, 41, 55, 0.82);
   padding: 8px 10px;
@@ -363,6 +365,24 @@
   white-space: pre-wrap;
   overflow: hidden;
   pointer-events: none;
+}
+
+/* 보기 모드에서 pill/div 정렬을 input과 동일하게 */
+.tlppt-view.tlppt-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* cqw 미지원 브라우저 폴백 */
+@supports not (font-size: 1cqw) {
+  .tlppt-pill {
+    font-size: clamp(11px, 1.45vw, 14px);
+  }
+  .tlppt-body {
+    font-size: clamp(9px, 1.05vw, 10.5px);
+  }
 }
 
 /* 좌표(퍼센트): PPT 슬라이드1 기준 */
