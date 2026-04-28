@@ -34,18 +34,226 @@
   touch-action: pan-x pan-y;
 }
 
+/* 발자취: 이미지+마커 오버레이를 함께 줌(변환은 이 래퍼에 적용) */
+#map-leaflet[data-static-map="true"] .map-static-zoom-inner {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+#map-leaflet[data-static-map="true"] .map-static-marker-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+}
+
+#map-leaflet[data-static-map="true"] .map-static-inline-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
 #map-leaflet[data-static-map="true"] img {
+  position: relative;
+  z-index: 1;
   max-width: none;
   max-height: none;
   width: 100%;
   height: 100%;
   object-fit: contain;
-  transform-origin: 50% 50%;
-  will-change: transform;
   user-select: none;
   -webkit-user-drag: none;
   pointer-events: none; /* 드래그는 컨테이너에서 처리 */
   image-rendering: auto;
+}
+
+/* -------- 발자취: 지도 하단 인포그래픽(레퍼런스 이미지 레이아웃) -------- */
+.fp2 {
+  overflow: hidden;
+  background: #fff;
+}
+
+.fp2-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: auto 62px auto;
+  gap: 0;
+  padding: 14px 14px 10px;
+  position: relative;
+  /* 수평 막대가 화면(박스) 가운데에 꽉 차게 */
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+/* 가운데 수평 막대(색상 바 + 구분선) */
+.fp2-axis {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  align-self: center;
+  height: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+}
+.fp2-seg {
+  background: var(--fp);
+  position: relative;
+}
+.fp2-seg:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -1px;
+  width: 1px;
+  height: calc(100% + 2px);
+  background: rgba(0, 0, 0, 0.14);
+}
+
+/* 카드: 상단 4칸 / 하단 3칸 (레퍼런스처럼 지그재그 연결) */
+.fp2-card {
+  position: relative;
+  /* 수직 막대(x=0)가 해당 칸(세그먼트) 좌단과 일치하도록 */
+  padding: 0 12px 0 22px;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  /* 수직선 끝단(상/하)을 기준으로 원·입력칸을 정렬하기 위한 변수 */
+  --rTop: 56px;
+  --rBot: 6px;
+}
+.fp2-card--top {
+  grid-row: 1;
+  align-self: end;
+}
+.fp2-card--bottom {
+  grid-row: 3;
+  align-self: start;
+  --rTop: 6px;
+  --rBot: 56px;
+}
+
+.fp2-rail {
+  position: absolute;
+  /* 가운데 수평막대의 구분선(세그먼트 경계)과 정렬 */
+  left: -1.5px;
+  top: var(--rTop);
+  bottom: var(--rBot);
+  width: 3px;
+  background: var(--fp);
+}
+
+/* 첫 구간(맨 왼쪽)은 경계선이 없으므로 0에 고정 */
+.fp2-step-13 .fp2-rail {
+  left: 0;
+}
+
+.fp2-dot {
+  position: absolute;
+  left: 18px;
+  /* 원 중심이 수직선 끝단과 맞도록 */
+  top: calc(var(--rTop) - 10px);
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--fp) 55%, #ffffff 45%);
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+}
+.fp2-card--bottom .fp2-dot {
+  top: auto;
+  bottom: calc(var(--rBot) - 10px);
+}
+.fp2-dot span {
+  display: inline-block;
+  min-width: 14px;
+  height: 14px;
+  line-height: 14px;
+  border-radius: 999px;
+  background: var(--fp);
+  color: #fff;
+  font-weight: 800;
+  font-size: 10px;
+  text-align: center;
+  padding: 0 4px;
+}
+
+/* 입력 영역: 레퍼런스처럼 '칸'이 분명하게 보이도록(세로 직사각형) */
+.fp2-body {
+  position: absolute;
+  left: 18px;
+  right: 10px;
+  /* 입력칸 상단이 원/수직선 끝단 기준으로 자동 정렬 */
+  top: calc(var(--rTop) + 34px);
+  bottom: 12px;
+  padding: 12px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  background: #ffffff;
+  /* 입력 박스 크기는 그래프(50% 폭)와 카드 높이에 자동 연동 */
+  min-height: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(12, 10, 9, 0.82);
+  outline: none;
+}
+.fp2-card--bottom .fp2-body {
+  top: 12px;
+  bottom: calc(var(--rBot) + 34px);
+}
+.fp2-body:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(120, 113, 108, 0.6);
+}
+
+/* 작은 화면에서도 한 화면에 7칸이 다 들어오게 압축 */
+@media (max-width: 460px) {
+  .fp2-grid {
+    grid-template-rows: auto 54px auto;
+    padding: 10px 10px 8px;
+    max-width: 100%;
+  }
+  .fp2-axis {
+    height: 14px;
+  }
+  .fp2-card {
+    padding: 0 8px 0 14px;
+    min-height: 140px;
+  }
+  .fp2-rail {
+    /* 작은 화면에서도 '세그먼트 경계선' 정렬 유지 */
+    left: -1px;
+    width: 2px;
+  }
+  .fp2-step-13 .fp2-rail {
+    left: 0;
+  }
+  .fp2-dot {
+    left: 14px;
+  }
+  .fp2-dot span {
+    font-size: 10px;
+  }
+  .fp2-body {
+    left: 14px;
+    right: 8px;
+    padding: 8px 8px;
+    font-size: 11px;
+    line-height: 1.35;
+  }
 }
 
 .view-panel.hidden {

@@ -3494,12 +3494,130 @@ function initMapFitButton() {
 function initStaticMapInlineZoom() {
   const host = document.getElementById("map-leaflet");
   const img = document.getElementById("map-static-inline-img");
+  const zoomInner = document.getElementById("map-static-zoom-inner");
+  const canvas = document.getElementById("map-static-inline-canvas");
   const btnIn = document.getElementById("map-static-zoom-in");
   const btnOut = document.getElementById("map-static-zoom-out");
   const btnReset = document.getElementById("map-static-zoom-reset");
 
   if (!host || !img) return;
   if (host.getAttribute("data-static-map") !== "true") return;
+  const zoomTarget = zoomInner || img;
+
+  // 파란 마커(번호 원)만 자연스럽게 제거: 주변 픽셀을 안쪽으로 복제(간단 인페인팅).
+  // 지도에 원래 있던 도로 표식(35/5)은 파란 마커 좌표만 처리하므로 영향을 주지 않는다.
+  (function cleanupBlueMarkersOnCanvas() {
+    if (!canvas || !canvas.getContext) return;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    const run = () => {
+      try {
+        const w = img.naturalWidth || 0;
+        const h = img.naturalHeight || 0;
+        if (!w || !h) return false;
+        canvas.width = w;
+        canvas.height = h;
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const d = imgData.data;
+        const get = (x, y) => {
+          const i = (y * w + x) * 4;
+          return [d[i], d[i + 1], d[i + 2], d[i + 3]];
+        };
+        const set = (x, y, rgba) => {
+          const i = (y * w + x) * 4;
+          d[i] = rgba[0];
+          d[i + 1] = rgba[1];
+          d[i + 2] = rgba[2];
+          d[i + 3] = rgba[3];
+        };
+        const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+        // 파란 마커 1~4만 제거(요청)
+        // (bbox 중심 기준) 위에서부터 검출된 4개만 처리한다.
+        const centers = [
+          [83.5, 75.5],
+          [92.5, 185.5],
+          [120.0, 222.5],
+          [454.5, 255.5],
+        ];
+
+        const R = 19; // 파란 원 반경+여유
+        const OUT = 3; // 바깥 샘플 거리
+        for (const [fx, fy] of centers) {
+          const cx = Math.round(fx);
+          const cy = Math.round(fy);
+          for (let y = cy - R; y <= cy + R; y++) {
+            if (y < 0 || y >= h) continue;
+            for (let x = cx - R; x <= cx + R; x++) {
+              if (x < 0 || x >= w) continue;
+              const dx = x - cx;
+              const dy = y - cy;
+              const rr = dx * dx + dy * dy;
+              if (rr > R * R) continue;
+              // 각도 방향으로 원 바깥 픽셀을 복사
+              const dist = Math.sqrt(rr) || 1;
+              const ux = dx / dist;
+              const uy = dy / dist;
+              const sx = clamp(Math.round(cx + ux * (R + OUT)), 0, w - 1);
+              const sy = clamp(Math.round(cy + uy * (R + OUT)), 0, h - 1);
+              set(x, y, get(sx, sy));
+            }
+          }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+        // 원본 IMG는 남겨두되, 캔버스가 보이도록만 투명 처리(로드 실패 시 원본을 보이게 유지)
+        img.style.opacity = "0";
+        img.style.pointerEvents = "none";
+        // 일부 브라우저/캐시 상황에서 opacity가 즉시 반영 안 되는 경우가 있어 display도 함께 내린다.
+        // (이미지는 그대로 DOM에 있어 naturalWidth/contain 계산에는 영향 없음)
+        img.style.display = "none";
+        return true;
+      } catch {
+        // 실패하면 원본 이미지 그대로 노출
+        img.style.opacity = "";
+        img.style.display = "";
+        return false;
+      }
+    };
+
+    // 마지막 시도: decode()로 이미지 디코딩 완료를 보장한 뒤 처리한다.
+    // (img.complete/naturalWidth 타이밍 이슈를 근본적으로 회피)
+    let done = false;
+    const runOnce = async () => {
+      if (done) return;
+      done = true;
+      try {
+        // decode() 미지원 브라우저는 catch로 떨어져 load+재시도로 간다.
+        if (typeof img.decode === "function") await img.decode();
+        if (run()) return;
+        // decode 후에도 0이면 짧게 재시도
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 16));
+          if (run()) return;
+        }
+      } catch {
+        // ignore
+      }
+      // decode 경로가 실패해도 load 기반으로 한 번 더 시도
+      if (run()) return;
+      let left = 30;
+      const tick = () => {
+        if (run()) return;
+        left -= 1;
+        if (left <= 0) return;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    };
+
+    img.addEventListener("load", () => void runOnce(), { once: true });
+    void runOnce();
+  })();
 
   const ZOOM_STEPS = [1, 1.5, 2, 3];
   let stepIdx = 0;
@@ -3544,7 +3662,7 @@ function initStaticMapInlineZoom() {
     const { maxX, maxY } = computeClampBounds(scale);
     tx = clamp(tx, -maxX, maxX);
     ty = clamp(ty, -maxY, maxY);
-    img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    zoomTarget.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
     host.style.cursor = scale > 1 ? "grab" : "default";
     // 줌 상태에서는 스크롤/브라우저 제스처 대신 드래그 이동이 우선되도록
     host.style.touchAction = scale > 1 ? "none" : "pan-x pan-y";
