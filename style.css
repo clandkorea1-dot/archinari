@@ -94,6 +94,8 @@
   width: 100%;
   max-width: none;
   margin: 0;
+  /* 칸 좌우 여백(입력 박스·축 세그먼트와 같은 리듬) */
+  --fp2-gap: 6px;
 }
 
 /* 가운데 수평 막대(색상 바 + 구분선) */
@@ -122,15 +124,13 @@
   background: rgba(0, 0, 0, 0.14);
 }
 
-/* 카드: 상단 4칸 / 하단 3칸 (레퍼런스처럼 지그재그 연결) */
+/* 카드: 상단 4칸 / 하단 3칸 (지그재그). 입력은 칸 폭 전체에서 --fp2-gap만큼 안쪽 */
 .fp2-card {
   position: relative;
-  /* 수직 막대(x=0)가 해당 칸(세그먼트) 좌단과 일치하도록 */
-  padding: 0 12px 0 22px;
+  box-sizing: border-box;
+  padding: 0;
   min-height: 160px;
-  display: flex;
-  flex-direction: column;
-  /* 수직선 끝단(상/하)을 기준으로 원·입력칸을 정렬하기 위한 변수 */
+  /* 수직선 끝단(상/하)을 기준으로 원·입력칸을 정렬 */
   --rTop: 56px;
   --rBot: 6px;
 }
@@ -145,17 +145,88 @@
   --rBot: 56px;
 }
 
+/* 축 세그먼트(막대칸) 1~7열과 동일 열에 카드·입력 박스를 한 칸씩 배치 */
+.fp2-step-13 {
+  grid-column: 1;
+}
+.fp2-step-9 {
+  grid-column: 2;
+}
+.fp2-step-7 {
+  grid-column: 3;
+}
+.fp2-step-8 {
+  grid-column: 4;
+}
+.fp2-step-11 {
+  grid-column: 5;
+}
+.fp2-step-6 {
+  grid-column: 6;
+}
+.fp2-step-3 {
+  grid-column: 7;
+}
+
+/* 상단 행 13·7·11·3: 원을 y로 내려 중앙 막대에 가깝게(본문은 위쪽에 배치) */
+.fp2-card--top.fp2-step-13 .fp2-rail,
+.fp2-card--top.fp2-step-7 .fp2-rail,
+.fp2-card--top.fp2-step-11 .fp2-rail,
+.fp2-card--top.fp2-step-3 .fp2-rail {
+  top: 12px;
+  bottom: var(--rBot);
+}
+.fp2-card--top.fp2-step-13 .fp2-dot,
+.fp2-card--top.fp2-step-7 .fp2-dot,
+.fp2-card--top.fp2-step-11 .fp2-dot,
+.fp2-card--top.fp2-step-3 .fp2-dot {
+  top: auto;
+  bottom: calc(var(--rBot) + 14px);
+}
+.fp2-card--top.fp2-step-13 .fp2-slot,
+.fp2-card--top.fp2-step-7 .fp2-slot,
+.fp2-card--top.fp2-step-11 .fp2-slot,
+.fp2-card--top.fp2-step-3 .fp2-slot {
+  top: auto;
+  /* 원(.fp2-dot)의 top edge(= bottom + 20px)와 맞닿게 */
+  bottom: calc(var(--rBot) + 34px);
+}
+
+/* 하단 행 9·8·6: 원을 y로 올려 중앙 막대에 가깝게(본문은 아래쪽에 배치) */
+.fp2-card--bottom.fp2-step-9 .fp2-rail,
+.fp2-card--bottom.fp2-step-8 .fp2-rail,
+.fp2-card--bottom.fp2-step-6 .fp2-rail {
+  top: var(--rTop);
+  bottom: 12px;
+}
+.fp2-card--bottom.fp2-step-9 .fp2-dot,
+.fp2-card--bottom.fp2-step-8 .fp2-dot,
+.fp2-card--bottom.fp2-step-6 .fp2-dot {
+  top: calc(var(--rTop) + 10px);
+  bottom: auto;
+}
+.fp2-card--bottom.fp2-step-9 .fp2-slot,
+.fp2-card--bottom.fp2-step-8 .fp2-slot,
+.fp2-card--bottom.fp2-step-6 .fp2-slot {
+  top: calc(var(--rTop) + 26px);
+  bottom: auto;
+}
+
 .fp2-rail {
   position: absolute;
-  /* 가운데 수평막대의 구분선(세그먼트 경계)과 정렬 */
   left: -1.5px;
   top: var(--rTop);
   bottom: var(--rBot);
   width: 3px;
   background: var(--fp);
+  /* 길이 35% 축소(잔여 65%) — 중앙 막대 쪽 끝점을 고정 */
+  transform: scaleY(0.65);
+  transform-origin: bottom center;
+}
+.fp2-card--bottom .fp2-rail {
+  transform-origin: top center;
 }
 
-/* 첫 구간(맨 왼쪽)은 경계선이 없으므로 0에 고정 */
 .fp2-step-13 .fp2-rail {
   left: 0;
 }
@@ -163,7 +234,6 @@
 .fp2-dot {
   position: absolute;
   left: 18px;
-  /* 원 중심이 수직선 끝단과 맞도록 */
   top: calc(var(--rTop) - 10px);
   width: 20px;
   height: 20px;
@@ -191,32 +261,34 @@
   padding: 0 4px;
 }
 
-/* 입력 영역: 레퍼런스처럼 '칸'이 분명하게 보이도록(세로 직사각형) */
-.fp2-body {
+/* 비어있는 사각형 슬롯: 막대칸 내부에서만 보이게 */
+.fp2-slot {
   position: absolute;
-  left: 18px;
-  right: 10px;
-  /* 입력칸 상단이 원/수직선 끝단 기준으로 자동 정렬 */
+  left: var(--fp2-gap);
+  right: var(--fp2-gap);
+  box-sizing: border-box;
+  /* 막대칸 안에서만 보이도록: 세로를 고정(가로로 긴 형태) */
+  height: 64px;
   top: calc(var(--rTop) + 34px);
-  bottom: 12px;
-  padding: 12px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  bottom: auto;
+  border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 10px;
-  background: #ffffff;
-  /* 입력 박스 크기는 그래프(50% 폭)와 카드 높이에 자동 연동 */
-  min-height: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  color: rgba(12, 10, 9, 0.82);
-  outline: none;
+  background: rgba(255, 255, 255, 0.92);
 }
-.fp2-card--bottom .fp2-body {
-  top: 12px;
-  bottom: calc(var(--rBot) + 34px);
+
+/* 3번(우측 끝)은 제외하고 가로 폭을 200%로 확장(세로 높이는 유지) */
+.fp2-step-13 .fp2-slot,
+.fp2-step-7 .fp2-slot,
+.fp2-step-11 .fp2-slot,
+.fp2-step-9 .fp2-slot,
+.fp2-step-8 .fp2-slot,
+.fp2-step-6 .fp2-slot {
+  right: auto;
+  width: calc(200% - 2 * var(--fp2-gap));
 }
-.fp2-body:empty::before {
-  content: attr(data-placeholder);
-  color: rgba(120, 113, 108, 0.6);
+.fp2-card--bottom .fp2-slot {
+  top: calc(var(--rTop) + 26px);
+  bottom: auto;
 }
 
 /* 작은 화면에서도 한 화면에 7칸이 다 들어오게 압축 */
@@ -225,18 +297,22 @@
     grid-template-rows: auto 54px auto;
     padding: 10px 10px 8px;
     max-width: 100%;
+    --fp2-gap: 4px;
   }
   .fp2-axis {
     height: 14px;
   }
   .fp2-card {
-    padding: 0 8px 0 14px;
     min-height: 140px;
   }
   .fp2-rail {
-    /* 작은 화면에서도 '세그먼트 경계선' 정렬 유지 */
     left: -1px;
     width: 2px;
+    transform: scaleY(0.65);
+    transform-origin: bottom center;
+  }
+  .fp2-card--bottom .fp2-rail {
+    transform-origin: top center;
   }
   .fp2-step-13 .fp2-rail {
     left: 0;
@@ -247,12 +323,9 @@
   .fp2-dot span {
     font-size: 10px;
   }
-  .fp2-body {
-    left: 14px;
-    right: 8px;
-    padding: 8px 8px;
-    font-size: 11px;
-    line-height: 1.35;
+  .fp2-slot {
+    border-radius: 9px;
+    height: 54px;
   }
 }
 
