@@ -88,8 +88,10 @@
   grid-template-columns: repeat(7, 1fr);
   grid-template-rows: auto 62px auto;
   gap: 0;
-  padding: 14px 14px 10px;
+  /* 카드 레이아웃(위/아래 정렬)은 유지하고, 박스 상·하단 여백만 최소화 */
+  padding: 2px 14px 2px;
   position: relative;
+  transform: translateY(-13%);
   /* 수평 막대가 화면(박스) 가운데에 꽉 차게 */
   width: 100%;
   max-width: none;
@@ -219,12 +221,425 @@
   bottom: var(--rBot);
   width: 3px;
   background: var(--fp);
-  /* 길이 35% 축소(잔여 65%) — 중앙 막대 쪽 끝점을 고정 */
-  transform: scaleY(0.65);
+  /* 중앙 막대(.fp2-axis)와 닿도록 전체 길이 사용 */
+  transform: scaleY(1);
   transform-origin: bottom center;
 }
 .fp2-card--bottom .fp2-rail {
   transform-origin: top center;
+}
+
+.fp2-grid {
+  /* (이전 조정) 인포그래픽 전체 살짝 위로 */
+  transform: translateY(-13%);
+}
+
+/* -------- 발자취: 하단 타임라인 인포그래픽(레퍼런스: 2021~2026, 2026을 우측으로 확장) -------- */
+.tl1 {
+  overflow: hidden;
+  background: #fff;
+}
+
+.tl1.tlppt {
+  background: #fff;
+}
+
+.tlppt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px 0;
+}
+
+.tlppt-head-title {
+  font-size: 12px;
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.72);
+  letter-spacing: -0.01em;
+}
+
+.tlppt-edit-btn {
+  height: 30px;
+  border-radius: 999px;
+  padding: 0 12px;
+  border: 1px solid rgba(22, 101, 52, 0.28);
+  background: rgba(22, 101, 52, 0.1);
+  color: rgba(22, 101, 52, 0.92);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tlppt-edit-btn[aria-pressed="true"] {
+  background: rgba(22, 101, 52, 0.18);
+  box-shadow: 0 0 0 2px rgba(22, 101, 52, 0.22);
+}
+
+.tlppt-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9; /* 슬라이드1(960×540) */
+  overflow: hidden;
+  margin-top: 8px;
+  /* PPT 느낌의 기본 글꼴/렌더링 */
+  font-family: Calibri, Arial, system-ui, "Segoe UI", sans-serif;
+  text-rendering: geometricPrecision;
+}
+
+.tlppt-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+  background: #fff;
+  z-index: 0;
+}
+
+/* PPT 위에 올리는 편집 필드 공통 */
+.tlppt-stage .tl1-edit {
+  position: absolute;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: rgba(17, 24, 39, 0.92);
+  z-index: 3; /* 편집이 항상 최상단 */
+  pointer-events: auto;
+}
+
+.tlppt-stage .tl1-edit {
+  display: none; /* 기본은 "보기" 모드 */
+}
+
+.tlppt-stage.is-editing .tl1-edit {
+  display: block;
+}
+
+.tlppt-view {
+  position: absolute;
+  display: block;
+  z-index: 2; /* 배경보다 위, 편집보다 아래 */
+}
+
+.tlppt-stage.is-editing .tlppt-view {
+  display: none;
+}
+
+.tlppt-stage .tl1-edit:focus {
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 0 0 2px rgba(22, 101, 52, 0.28);
+  border-radius: 10px;
+}
+
+.tlppt-pill {
+  text-align: center;
+  font-weight: 900;
+  /* 슬라이드 비율에 맞춰 반응형 크기 */
+  font-size: clamp(11px, 1.45vw, 14px);
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.96);
+  border-radius: 999px;
+  padding: 6px 10px;
+  height: 34px;
+  line-height: 1;
+}
+
+.tlppt-body {
+  resize: none;
+  font-size: clamp(9px, 1.05vw, 10.5px);
+  line-height: 1.4;
+  color: rgba(31, 41, 55, 0.82);
+  padding: 8px 10px;
+  /* 배경 이미지에 인쇄된 원문(로렘)을 가리기 위한 마스크 */
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.tlppt-view.tlppt-body {
+  white-space: pre-wrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 좌표(퍼센트): PPT 슬라이드1 기준 */
+.tlppt-pill--2014 {
+  left: 18.5%;
+  top: 14%;
+  width: 10%;
+  background: rgba(37, 99, 235, 0.95);
+}
+.tlppt-body--2014 {
+  left: 20.2%;
+  top: 25%;
+  width: 17.5%;
+  height: 26%;
+}
+
+.tlppt-pill--2016 {
+  left: 45%;
+  top: 14%;
+  width: 10%;
+  background: rgba(245, 158, 11, 0.95);
+}
+.tlppt-body--2016 {
+  left: 46.7%;
+  top: 25%;
+  width: 17.5%;
+  height: 26%;
+}
+
+.tlppt-pill--2018 {
+  left: 72%;
+  top: 14%;
+  width: 10%;
+  background: rgba(185, 28, 28, 0.95);
+}
+.tlppt-body--2018 {
+  left: 73.7%;
+  top: 25%;
+  width: 17.5%;
+  height: 26%;
+}
+
+.tlppt-pill--2015 {
+  left: 31.5%;
+  top: 74%;
+  width: 10%;
+  background: rgba(234, 88, 12, 0.95);
+}
+.tlppt-body--2015 {
+  left: 33.2%;
+  top: 52%;
+  width: 17.5%;
+  height: 22%;
+}
+
+.tlppt-pill--2017 {
+  left: 58.5%;
+  top: 74%;
+  width: 10%;
+  background: rgba(107, 70, 193, 0.95);
+}
+.tlppt-body--2017 {
+  left: 60.2%;
+  top: 52%;
+  width: 17.5%;
+  height: 22%;
+}
+
+@media (max-width: 420px) {
+  .tlppt-pill {
+    font-size: 12px;
+    height: 30px;
+    padding: 5px 8px;
+  }
+  .tlppt-body {
+    font-size: 10px;
+  }
+}
+
+.tl1-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  /* 정렬 기준을 그리드로 고정(임의 translate 보정 제거) */
+  grid-template-rows: minmax(132px, auto) 44px minmax(104px, auto);
+  gap: 0;
+  padding: 10px 14px 10px;
+  position: relative;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.tl1-axis {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  align-self: center;
+  height: 14px;
+  background: #fff;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.tl1-seg {
+  background: var(--tl);
+  position: relative;
+}
+
+.tl1-seg:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+/* 축(가로막대)에서도 마지막(7번째) 칸은 2026 색으로 이어지게 */
+.tl1-axis .tl1-seg:nth-child(6),
+.tl1-axis .tl1-seg:nth-child(7) {
+  --tl: #2563eb;
+}
+
+.tl1-card {
+  position: relative;
+  box-sizing: border-box;
+  min-height: 0;
+  height: 100%;
+}
+
+.tl1-card--top {
+  grid-row: 1;
+  align-self: stretch;
+}
+
+.tl1-card--bottom {
+  grid-row: 3;
+  align-self: stretch;
+}
+
+/* 각 연도 위치(7칸) */
+.tl1-y2021 {
+  grid-column: 1;
+}
+.tl1-y2022 {
+  grid-column: 2;
+}
+.tl1-y2023 {
+  grid-column: 3;
+}
+.tl1-y2024 {
+  grid-column: 4;
+}
+.tl1-y2025 {
+  grid-column: 5;
+}
+.tl1-y2026 {
+  /* 2027 칸을 없애고 2026을 오른쪽 끝까지(2칸 폭) 확장 */
+  grid-column: 6 / span 2;
+}
+
+/* 수직 컬러 라인(레퍼런스처럼 얇게) */
+.tl1-rail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--tl);
+  border-radius: 2px;
+}
+
+/* 위쪽 카드 내용(얇은 회색 박스 느낌) */
+.tl1-body {
+  margin-left: 10px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 6px;
+  padding: 10px 10px 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+}
+
+.tl1-title {
+  font-weight: 900;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  color: rgba(17, 24, 39, 0.86);
+  margin-bottom: 6px;
+}
+
+.tl1-text {
+  font-size: 11px;
+  line-height: 1.35;
+  color: rgba(55, 65, 81, 0.72);
+}
+
+/* 아래쪽 연도 표기(큰 숫자) */
+.tl1-year {
+  margin-left: 10px;
+  font-weight: 900;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  color: rgba(17, 24, 39, 0.78);
+}
+
+/* 편집용 입력 박스(원래 톤 유지: 점선/강조 없이 균형만 잡기) */
+.tl1 [data-tl-edit] {
+  display: block;
+}
+
+.tl1 .tl1-edit {
+  border: 0;
+  outline: none;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+}
+
+.tl1 textarea.tl1-edit {
+  resize: vertical;
+}
+
+.tl1 .tl1-text.tl1-edit {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 10px 12px;
+  min-height: 72px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.tl1 .tl1-year.tl1-edit {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  min-height: 40px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  width: min(100%, 12ch);
+}
+
+/* 모바일에서 너무 촘촘하면 2줄로 */
+@media (max-width: 520px) {
+  .tl1-grid {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: auto 56px auto auto 56px auto;
+  }
+  .tl1-axis {
+    grid-column: 1 / -1;
+  }
+  .tl1-y2021 {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .tl1-y2022 {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .tl1-y2023 {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .tl1-y2024 {
+    grid-column: 4;
+    grid-row: 1;
+  }
+  .tl1-y2025 {
+    grid-column: 1;
+    grid-row: 4;
+  }
+  .tl1-y2026 {
+    grid-column: 2;
+    grid-row: 4;
+  }
 }
 
 .fp2-step-13 .fp2-rail {

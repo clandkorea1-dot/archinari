@@ -600,65 +600,46 @@
         </div>
         <p class="mt-2 text-center text-[11px] text-stone-400">＋/－로 단계 줌(최대 2배). 줌 상태에서는 드래그로 이동, 원위치로 1배 복귀.</p>
 
-        <!-- 발자취: 지도 하단 인포그래픽(레퍼런스 이미지와 동일 레이아웃) -->
-        <section
-          class="fp2 mt-3 w-full rounded-2xl border border-stone-200 bg-white shadow-sm"
-          aria-label="선조의 발자취 인포그래픽"
-        >
-          <div class="fp2-grid" role="list" aria-label="발자취 단계 카드">
-            <!-- (지그재그) 위-아래-위-아래...: 13, 9, 7, 8, 11, 6, 3 -->
-            <article class="fp2-card fp2-card--top fp2-step-13" style="--fp:#0ea5a4" role="listitem">
-              <div class="fp2-rail" aria-hidden="true"></div>
-              <div class="fp2-dot" aria-hidden="true"><span>13</span></div>
-              <div class="fp2-slot" aria-hidden="true"></div>
-            </article>
+        <!-- 발자취: 하단 타임라인 인포그래픽(PPT 슬라이드 레이아웃을 배경으로 사용 + 텍스트는 동일 위치에서 편집) -->
+        <section class="tl1 tlppt mt-3 w-full rounded-2xl border border-stone-200 bg-white shadow-sm" aria-label="선조의 발자취 타임라인 인포그래픽(PPT)">
+          <div class="tlppt-head">
+            <p class="tlppt-head-title">타임라인</p>
+            <button type="button" class="tlppt-edit-btn" data-tlppt-toggle="1" aria-pressed="false">
+              편집
+            </button>
+          </div>
+          <div class="tlppt-stage" role="group" aria-label="타임라인 인포그래픽">
+            <img class="tlppt-bg" src="assets/ppt_export/ppt_slide1.png" alt="타임라인 인포그래픽 배경(PPT 슬라이드)" decoding="async" />
 
-            <article class="fp2-card fp2-card--bottom fp2-step-9" style="--fp:#f59e0b" role="listitem">
-              <div class="fp2-rail" aria-hidden="true"></div>
-              <div class="fp2-dot" aria-hidden="true"><span>9</span></div>
-              <div class="fp2-slot" aria-hidden="true"></div>
-            </article>
+            <!-- 2014 (상단 좌측) -->
+            <input class="tlppt-pill tlppt-pill--2014 tl1-edit" data-tl-edit="ppt-2014-title" type="text" inputmode="text" value="2014" aria-label="2014 타이틀" />
+            <textarea class="tlppt-body tlppt-body--2014 tl1-edit" data-tl-edit="ppt-2014-body" rows="4" placeholder="2014 내용"></textarea>
+            <div class="tlppt-pill tlppt-pill--2014 tlppt-view" data-tl-view="ppt-2014-title" aria-hidden="false"></div>
+            <div class="tlppt-body tlppt-body--2014 tlppt-view" data-tl-view="ppt-2014-body" aria-hidden="false"></div>
 
-            <article class="fp2-card fp2-card--top fp2-step-7" style="--fp:#ef4444" role="listitem">
-              <div class="fp2-rail" aria-hidden="true"></div>
-              <div class="fp2-dot" aria-hidden="true"><span>7</span></div>
-              <div class="fp2-slot" aria-hidden="true"></div>
-            </article>
+            <!-- 2016 (상단 중앙) -->
+            <input class="tlppt-pill tlppt-pill--2016 tl1-edit" data-tl-edit="ppt-2016-title" type="text" inputmode="text" value="2016" aria-label="2016 타이틀" />
+            <textarea class="tlppt-body tlppt-body--2016 tl1-edit" data-tl-edit="ppt-2016-body" rows="4" placeholder="2016 내용"></textarea>
+            <div class="tlppt-pill tlppt-pill--2016 tlppt-view" data-tl-view="ppt-2016-title" aria-hidden="false"></div>
+            <div class="tlppt-body tlppt-body--2016 tlppt-view" data-tl-view="ppt-2016-body" aria-hidden="false"></div>
 
-            <article class="fp2-card fp2-card--bottom fp2-step-8" style="--fp:#7c3aed" role="listitem">
-              <div class="fp2-rail" aria-hidden="true"></div>
-              <div class="fp2-dot" aria-hidden="true"><span>8</span></div>
-              <div class="fp2-slot" aria-hidden="true"></div>
-            </article>
+            <!-- 2018 (상단 우측) -->
+            <input class="tlppt-pill tlppt-pill--2018 tl1-edit" data-tl-edit="ppt-2018-title" type="text" inputmode="text" value="2018" aria-label="2018 타이틀" />
+            <textarea class="tlppt-body tlppt-body--2018 tl1-edit" data-tl-edit="ppt-2018-body" rows="4" placeholder="2018 내용"></textarea>
+            <div class="tlppt-pill tlppt-pill--2018 tlppt-view" data-tl-view="ppt-2018-title" aria-hidden="false"></div>
+            <div class="tlppt-body tlppt-body--2018 tlppt-view" data-tl-view="ppt-2018-body" aria-hidden="false"></div>
 
-            <article class="fp2-card fp2-card--top fp2-step-11" style="--fp:#2563eb" role="listitem">
-              <div class="fp2-rail" aria-hidden="true"></div>
-              <div class="fp2-dot" aria-hidden="true"><span>11</span></div>
-              <div class="fp2-slot" aria-hidden="true"></div>
-            </article>
+            <!-- 2015 (하단 좌측) -->
+            <input class="tlppt-pill tlppt-pill--2015 tl1-edit" data-tl-edit="ppt-2015-title" type="text" inputmode="text" value="2015" aria-label="2015 타이틀" />
+            <textarea class="tlppt-body tlppt-body--2015 tl1-edit" data-tl-edit="ppt-2015-body" rows="4" placeholder="2015 내용"></textarea>
+            <div class="tlppt-pill tlppt-pill--2015 tlppt-view" data-tl-view="ppt-2015-title" aria-hidden="false"></div>
+            <div class="tlppt-body tlppt-body--2015 tlppt-view" data-tl-view="ppt-2015-body" aria-hidden="false"></div>
 
-            <article class="fp2-card fp2-card--bottom fp2-step-6" style="--fp:#22c55e" role="listitem">
-              <div class="fp2-rail" aria-hidden="true"></div>
-              <div class="fp2-dot" aria-hidden="true"><span>6</span></div>
-              <div class="fp2-slot" aria-hidden="true"></div>
-            </article>
-
-            <article class="fp2-card fp2-card--top fp2-step-3" style="--fp:#16a34a" role="listitem">
-              <div class="fp2-rail" aria-hidden="true"></div>
-              <div class="fp2-dot" aria-hidden="true"><span>3</span></div>
-              <div class="fp2-slot" aria-hidden="true"></div>
-            </article>
-
-            <!-- 가운데 수평 막대(레퍼런스처럼: 색상 바 + 칸 구분선) -->
-            <div class="fp2-axis" aria-hidden="true">
-              <div class="fp2-seg" style="--fp:#0ea5a4"></div>
-              <div class="fp2-seg" style="--fp:#f59e0b"></div>
-              <div class="fp2-seg" style="--fp:#ef4444"></div>
-              <div class="fp2-seg" style="--fp:#7c3aed"></div>
-              <div class="fp2-seg" style="--fp:#2563eb"></div>
-              <div class="fp2-seg" style="--fp:#22c55e"></div>
-              <div class="fp2-seg" style="--fp:#16a34a"></div>
-            </div>
+            <!-- 2017 (하단 우측) -->
+            <input class="tlppt-pill tlppt-pill--2017 tl1-edit" data-tl-edit="ppt-2017-title" type="text" inputmode="text" value="2017" aria-label="2017 타이틀" />
+            <textarea class="tlppt-body tlppt-body--2017 tl1-edit" data-tl-edit="ppt-2017-body" rows="4" placeholder="2017 내용"></textarea>
+            <div class="tlppt-pill tlppt-pill--2017 tlppt-view" data-tl-view="ppt-2017-title" aria-hidden="false"></div>
+            <div class="tlppt-body tlppt-body--2017 tlppt-view" data-tl-view="ppt-2017-body" aria-hidden="false"></div>
           </div>
         </section>
       </div>

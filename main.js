@@ -3442,6 +3442,122 @@ function initHeaderTabs() {
   });
 }
 
+/* ---------- 발자취: 타임라인(하단) 편집값 localStorage 저장 ---------- */
+function initTimelineInlineEdits() {
+  const root = document.querySelector("#view-map .tl1");
+  if (!root) return;
+
+  const KEY_PREFIX = "archinari:tl1:";
+  const fields = root.querySelectorAll("[data-tl-edit]");
+  const views = root.querySelectorAll("[data-tl-view]");
+
+  const getSaved = (k) => {
+    try {
+      const saved = localStorage.getItem(KEY_PREFIX + k);
+      return saved != null ? String(saved) : "";
+    } catch {
+      return "";
+    }
+  };
+
+  const setViewText = (k, v) => {
+    views.forEach((el) => {
+      if (String(el.getAttribute("data-tl-view") || "").trim() !== k) return;
+      el.textContent = String(v ?? "");
+    });
+  };
+
+  const readFieldValue = (el) =>
+    el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : el.textContent || "";
+
+  const syncAllFieldsToViewAndStorage = () => {
+    fields.forEach((el) => {
+      const k = String(el.getAttribute("data-tl-edit") || "").trim();
+      if (!k) return;
+      const v = readFieldValue(el);
+      try {
+        localStorage.setItem(KEY_PREFIX + k, String(v ?? ""));
+      } catch {
+        // ignore storage errors
+      }
+      setViewText(k, v);
+    });
+  };
+
+  // 초기 뷰 텍스트 구성(저장값 우선)
+  fields.forEach((el) => {
+    const k = String(el.getAttribute("data-tl-edit") || "").trim();
+    if (!k) return;
+
+    // load
+    try {
+      const saved = localStorage.getItem(KEY_PREFIX + k);
+      if (saved != null && saved !== "") {
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+          el.value = saved;
+        } else {
+          el.textContent = saved;
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+
+    const initial = readFieldValue(el);
+    setViewText(k, initial);
+
+    const save = () => {
+      try {
+        const v =
+          el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : el.textContent || "";
+        localStorage.setItem(KEY_PREFIX + k, String(v ?? ""));
+        setViewText(k, v);
+      } catch {
+        // ignore storage errors
+      }
+    };
+
+    // input = 즉시 저장, blur = 마무리 저장
+    el.addEventListener?.("input", save);
+    el.addEventListener?.("blur", save);
+  });
+
+  // PPT 타임라인: 보기/편집 토글(기본은 보기)
+  const btn = root.querySelector("[data-tlppt-toggle]");
+  const stage = root.querySelector(".tlppt-stage");
+  if (btn && stage) {
+    const apply = (on) => {
+      // 토글 시점마다 "보기 텍스트"와 저장값을 확실히 동기화
+      syncAllFieldsToViewAndStorage();
+      stage.classList.toggle("is-editing", !!on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.textContent = on ? "완료" : "편집";
+    };
+
+    const PIN = "0602";
+    let unlocked = false; // 탭(실행) 동안만 유지
+
+    const unlock = () => {
+      const input = window.prompt("편집 PIN을 입력하세요.");
+      if (String(input ?? "").trim() !== PIN) {
+        alert("PIN이 올바르지 않습니다.");
+        return false;
+      }
+      unlocked = true;
+      return true;
+    };
+
+    apply(false);
+    btn.addEventListener("click", () => {
+      if (!unlocked) {
+        if (!unlock()) return;
+      }
+      const next = !stage.classList.contains("is-editing");
+      apply(next);
+    });
+  }
+}
+
 /** 아천문중 벤토 페이지: 맨 위로 */
 function initMorePageChrome() {
   document.getElementById("more-back-top")?.addEventListener("click", () => {
@@ -9163,6 +9279,7 @@ initTreeZoomHosts();
 initTreeMiniZoomButtons();
 initMapFitButton();
 initStaticMapInlineZoom();
+initTimelineInlineEdits();
 
 // 저장된 기준 인물이 있으면 자동 복원
 try {
