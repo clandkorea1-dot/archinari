@@ -518,6 +518,10 @@ let mapInstance = null;
 let mapMarkersLayer = null;
 /** 마지막으로 fitBounds 한 영역(지도 「맞춤」 버튼 복귀용) */
 let lastMapFitBounds = null;
+/** 지도 원위치(초기 화면) 복귀용 */
+let mapOriginalView = null;
+/** 지도 경로(선) 레이어 */
+let mapRouteLayer = null;
 
 /** 화면에 보일 한글 라벨 */
 const FIELD_LABELS = {
@@ -3280,20 +3284,59 @@ function applyMapMarkers(points) {
     mapMarkersLayer = L.layerGroup().addTo(mapInstance);
   }
   mapMarkersLayer.clearLayers();
+  if (mapRouteLayer) {
+    mapRouteLayer.remove();
+    mapRouteLayer = null;
+  }
+
+  // 마커 이름이 숫자(1~N) 형태면 원형 번호 아이콘으로 표시한다.
+  const makeMarkerIcon = (label) => {
+    const s = String(label ?? "").trim();
+    const n = s && /^\d+$/.test(s) ? s : "";
+    if (!n) return null;
+    return L.divIcon({
+      className: "archinari-map-number-icon",
+      html: `<div class="archinari-map-number-icon-inner">${n}</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -10],
+    });
+  };
+
   const bounds = [];
-  points.forEach((s) => {
-    const m = L.marker([s.lat, s.lng]).addTo(mapMarkersLayer);
+  points.forEach((s, idx) => {
+    const rawName = String(s.name ?? "").trim();
+    const label = rawName && /^\d+$/.test(rawName) ? rawName : String(idx + 1);
+    const icon = makeMarkerIcon(label);
+    const m = L.marker([s.lat, s.lng], icon ? { icon } : undefined).addTo(mapMarkersLayer);
     m.bindPopup(
       `<strong class="text-ink-900">${escapeHtml(s.name)}</strong><br><span class="text-sm text-stone-600">${escapeHtml(s.desc || "")}</span>`
     );
     bounds.push([s.lat, s.lng]);
   });
+
+  // 점들이 “이동 순서(1~N)”를 의미한다고 가정하면 경로도 간단히 연결한다.
+  if (points.length >= 2) {
+    mapRouteLayer = L.polyline(
+      points.map((p) => [p.lat, p.lng]),
+      { color: "#7c3aed", weight: 3, opacity: 0.55 }
+    ).addTo(mapInstance);
+  }
+
   if (bounds.length) {
     const b = L.latLngBounds(bounds);
     lastMapFitBounds = b;
     mapInstance.fitBounds(b, { padding: [28, 28], maxZoom: 12 });
+    // “원위치”는 최초 fitBounds 이후 현재 view를 기준으로 잡는다.
+    if (!mapOriginalView) {
+      mapOriginalView = {
+        center: mapInstance.getCenter(),
+        zoom: mapInstance.getZoom(),
+      };
+    }
   } else {
     lastMapFitBounds = null;
+    mapOriginalView = null;
   }
 }
 
@@ -3558,6 +3601,169 @@ function initTimelineInlineEdits() {
   }
 }
 
+/* ---------- 발자취: 하단 자료(SVG) 확대/이동(전용) ---------- */
+function initFootprintsEmbedZoom() {
+  const stage = document.getElementById("fp-embed-stage");
+  const assetHost = document.getElementById("fp-embed-asset");
+  if (!stage || !assetHost) return;
+
+  const btnIn = document.getElementById("fp-zoom-in");
+  const btnOut = document.getElementById("fp-zoom-out");
+  const btnReset = document.getElementById("fp-zoom-reset");
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // "viewBox 줌"으로 확대하면 텍스트가 선명하게 유지된다.
+  const st = { scale: 1.25, x: 0, y: 0 };
+  const MIN = 1;
+  const MAX = 3.2;
+  const DEFAULT = 1.25;
+
+  const targetSvg = assetHost.querySelector("svg");
+  if (!(targetSvg instanceof SVGSVGElement)) return;
+  targetSvg.style.textRendering = "geometricPrecision";
+  targetSvg.style.shapeRendering = "geometricPrecision";
+
+  const base = { x: 0, y: 0, w: 960, h: 540 };
+
+  const unitPerPx = (viewW, viewH) => {
+    const wpx = stage.clientWidth || 1;
+    const hpx = stage.clientHeight || 1;
+    return { ux: viewW / wpx, uy: viewH / hpx };
+  };
+
+  const clampPan = () => {
+    const viewW = base.w / st.scale;
+    const viewH = base.h / st.scale;
+    const maxX = Math.max(0, base.w - viewW);
+    const maxY = Math.max(0, base.h - viewH);
+    st.x = clamp(st.x, 0, maxX);
+    st.y = clamp(st.y, 0, maxY);
+  };
+
+  const apply = () => {
+    clampPan();
+    const viewW = base.w / st.scale;
+    const viewH = base.h / st.scale;
+    targetSvg.setAttribute("viewBox", `${st.x} ${st.y} ${viewW} ${viewH}`);
+    stage.style.cursor = st.scale > 1 ? "grab" : "default";
+    stage.style.touchAction = st.scale > 1 ? "none" : "pan-x pan-y";
+  };
+
+  const reset = () => {
+    st.scale = DEFAULT;
+    const viewW = base.w / st.scale;
+    const viewH = base.h / st.scale;
+    st.x = (base.w - viewW) / 2;
+    st.y = (base.h - viewH) / 2;
+    apply();
+  };
+
+  const zoomTo = (nextScale, anchorX, anchorY) => {
+    const prev = st.scale;
+    const s = clamp(nextScale, MIN, MAX);
+    if (s === prev) return;
+    const r = stage.getBoundingClientRect();
+    const px = Number.isFinite(anchorX) ? anchorX : r.width * 0.5;
+    const py = Number.isFinite(anchorY) ? anchorY : r.height * 0.5;
+
+    const prevViewW = base.w / prev;
+    const prevViewH = base.h / prev;
+    const uPrev = unitPerPx(prevViewW, prevViewH);
+    const axU = st.x + px * uPrev.ux;
+    const ayU = st.y + py * uPrev.uy;
+
+    st.scale = s;
+    const nextViewW = base.w / st.scale;
+    const nextViewH = base.h / st.scale;
+    const uNext = unitPerPx(nextViewW, nextViewH);
+    st.x = axU - px * uNext.ux;
+    st.y = ayU - py * uNext.uy;
+    apply();
+  };
+
+  btnIn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    zoomTo(st.scale * 1.22, stage.clientWidth * 0.5, stage.clientHeight * 0.5);
+  });
+
+  btnOut?.addEventListener("click", (e) => {
+    e.preventDefault();
+    zoomTo(st.scale / 1.22, stage.clientWidth * 0.5, stage.clientHeight * 0.5);
+    if (st.scale <= DEFAULT + 0.001) reset();
+  });
+
+  btnReset?.addEventListener("click", (e) => {
+    e.preventDefault();
+    reset();
+  });
+
+  // Wheel zoom (desktop)
+  stage.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      const r = stage.getBoundingClientRect();
+      const ax = e.clientX - r.left;
+      const ay = e.clientY - r.top;
+      const dir = e.deltaY > 0 ? 1 / 1.12 : 1.12;
+      zoomTo(st.scale * dir, ax, ay);
+      if (st.scale <= DEFAULT + 0.001) reset();
+    },
+    { passive: false }
+  );
+
+  // Drag pan when zoomed
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+
+  stage.addEventListener("pointerdown", (e) => {
+    if (st.scale <= 1) return;
+    if (e.target?.closest?.(".fp-embed-controls")) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    stage.style.cursor = "grabbing";
+    try {
+      stage.setPointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+  });
+
+  stage.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    const viewW = base.w / st.scale;
+    const viewH = base.h / st.scale;
+    const u = unitPerPx(viewW, viewH);
+    // 드래그 방향대로 "콘텐츠"를 끌어오는 느낌
+    st.x -= dx * u.ux;
+    st.y -= dy * u.uy;
+    apply();
+  });
+
+  const endDrag = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    stage.style.cursor = st.scale > 1 ? "grab" : "default";
+    try {
+      stage.releasePointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  stage.addEventListener("pointerup", endDrag);
+  stage.addEventListener("pointercancel", endDrag);
+
+  reset();
+}
+
 /** 아천문중 벤토 페이지: 맨 위로 */
 function initMorePageChrome() {
   document.getElementById("more-back-top")?.addEventListener("click", () => {
@@ -3601,6 +3807,38 @@ function initTreeZoomHosts() {
 
 function initMapFitButton() {
   document.getElementById("map-fit-btn")?.addEventListener("click", () => {
+    fitMapToMarkersOrDefault();
+  });
+}
+
+/* ---------- 발자취: Leaflet용 미니 줌/원위치(＋/원위치 아이콘) ---------- */
+function initMapMiniControls() {
+  const host = document.getElementById("map-leaflet");
+  if (!host) return;
+  // 정적 PNG 모드면 여기서 처리하지 않는다.
+  if (host.getAttribute("data-static-map") === "true") return;
+
+  const btnIn = document.getElementById("map-static-zoom-in");
+  const btnReset = document.getElementById("map-static-zoom-reset");
+  if (!btnIn && !btnReset) return;
+
+  btnIn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    ensureMap();
+    if (!mapInstance) return;
+    mapInstance.zoomIn();
+  });
+
+  btnReset?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    ensureMap();
+    if (!mapInstance) return;
+    if (mapOriginalView?.center && Number.isFinite(mapOriginalView?.zoom)) {
+      mapInstance.setView(mapOriginalView.center, mapOriginalView.zoom, { animate: true });
+      return;
+    }
     fitMapToMarkersOrDefault();
   });
 }
@@ -3735,7 +3973,8 @@ function initStaticMapInlineZoom() {
     void runOnce();
   })();
 
-  const ZOOM_STEPS = [1, 1.5, 2, 3];
+  // PNG 지도는 비트맵이라 CSS 확대 시 흐려짐; UI「최대 2배」와 맞추고 과확대 방지
+  const ZOOM_STEPS = [1, 1.5, 2];
   let stepIdx = 0;
   let tx = 0;
   let ty = 0;
@@ -3749,6 +3988,30 @@ function initStaticMapInlineZoom() {
 
   function getScale() {
     return ZOOM_STEPS[clamp(stepIdx, 0, ZOOM_STEPS.length - 1)];
+  }
+
+  const src1 = img.getAttribute("src") || "";
+  // 2배 캡처(확대용 큰 PNG)를 주면, stepIdx>0에서 src를 교체해 선명도를 올림.
+  const src2x = img.dataset.zoomSrc2x || src1;
+
+  let imgSwapToken = 0;
+  async function ensureImgForCurrentStep() {
+    const targetSrc = stepIdx > 0 ? src2x : src1;
+    if (!targetSrc) return;
+    if (img.getAttribute("src") === targetSrc && img.complete) return;
+
+    imgSwapToken += 1;
+    const token = imgSwapToken;
+
+    img.setAttribute("src", targetSrc);
+    try {
+      if (typeof img.decode === "function") await img.decode();
+      else if (!img.complete) await new Promise((r) => (img.onload = () => r(null)));
+    } catch {
+      // ignore (이미지가 로드되지 않으면 현재 단계에서 흐림이 남을 수 있음)
+    }
+
+    if (token !== imgSwapToken) return;
   }
 
   function computeClampBounds(scale) {
@@ -3778,7 +4041,12 @@ function initStaticMapInlineZoom() {
     const { maxX, maxY } = computeClampBounds(scale);
     tx = clamp(tx, -maxX, maxX);
     ty = clamp(ty, -maxY, maxY);
-    zoomTarget.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    // 소수점 px 이동은 브라우저 보간을 더 유발할 수 있어, 픽셀 단위로 반올림.
+    // (완전한 해상도 개선은 아니지만, 확대 시 "초점 흐림" 체감을 줄이는 목적)
+    const rtx = Math.round(tx);
+    const rty = Math.round(ty);
+    // 확대 시 translate가 scale에 같이 먹히면(좌표가 비틀리면) 화면에서 사라질 수 있어 순서를 고정.
+    zoomTarget.style.transform = `scale(${scale}) translate(${rtx}px, ${rty}px)`;
     host.style.cursor = scale > 1 ? "grab" : "default";
     // 줌 상태에서는 스크롤/브라우저 제스처 대신 드래그 이동이 우선되도록
     host.style.touchAction = scale > 1 ? "none" : "pan-x pan-y";
@@ -3788,34 +4056,37 @@ function initStaticMapInlineZoom() {
     stepIdx = 0;
     tx = 0;
     ty = 0;
-    applyTransform();
+    // base 이미지는 이미 로드된 상태일 가능성이 높지만, 안전하게만 동기 적용
+    void ensureImgForCurrentStep().finally(() => applyTransform());
   }
 
-  function stepIn() {
+  async function stepIn() {
     if (stepIdx >= ZOOM_STEPS.length - 1) return;
     stepIdx += 1;
+    await ensureImgForCurrentStep();
     applyTransform();
   }
 
-  function stepOut() {
+  async function stepOut() {
     if (stepIdx <= 0) return;
     stepIdx -= 1;
     if (getScale() === 1) {
       tx = 0;
       ty = 0;
     }
+    await ensureImgForCurrentStep();
     applyTransform();
   }
 
   btnIn?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    stepIn();
+    void stepIn();
   });
   btnOut?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    stepOut();
+    void stepOut();
   });
   btnReset?.addEventListener("click", (e) => {
     e.preventDefault();
@@ -3877,8 +4148,8 @@ function initStaticMapInlineZoom() {
     (e) => {
       if (host.getAttribute("data-static-map") !== "true") return;
       e.preventDefault();
-      if (e.deltaY < 0) stepIn();
-      else stepOut();
+      if (e.deltaY < 0) void stepIn();
+      else void stepOut();
     },
     { passive: false }
   );
@@ -4566,12 +4837,15 @@ function ensureMap() {
   if (el.getAttribute("data-static-map") === "true") return;
 
   if (!mapInstance) {
+    // 정적 PNG 오버레이가 있다면 지도 위에 올라오지 않게 숨김.
+    document.getElementById("map-static-overlay")?.classList.add("hidden");
+
     mapInstance = L.map("map-leaflet", {
       scrollWheelZoom: true,
       tap: true,
       touchZoom: true,
       doubleClickZoom: true,
-      zoomControl: true,
+      zoomControl: false, // 우상단 아이콘(＋/원위치)만 사용
     });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
@@ -4579,6 +4853,7 @@ function ensureMap() {
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(mapInstance);
     mapMarkersLayer = L.layerGroup().addTo(mapInstance);
+    mapOriginalView = null;
     mapInstance.setView([36.36, 128.68], 10);
     void loadMapPointsIntoMap();
   } else {
@@ -9278,8 +9553,10 @@ initMoreExpanders();
 initTreeZoomHosts();
 initTreeMiniZoomButtons();
 initMapFitButton();
+initMapMiniControls();
 initStaticMapInlineZoom();
 initTimelineInlineEdits();
+initFootprintsEmbedZoom();
 
 // 저장된 기준 인물이 있으면 자동 복원
 try {
