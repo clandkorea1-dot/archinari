@@ -168,6 +168,26 @@
   fill: #111;
 }
 
+/* 홈 > 촌수계산 > 관계도 보기: 가로 스크롤바가 보이도록(브라우저 기본 숨김 보완) */
+#kinship-visual {
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: auto; /* Firefox */
+}
+#kinship-visual::-webkit-scrollbar {
+  height: 10px;
+}
+#kinship-visual::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 999px;
+}
+#kinship-visual::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 999px;
+}
+#kinship-visual::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.32);
+}
+
 /* -------- 발자취(Leaflet 타일): 숫자 마커 아이콘 -------- */
 .archinari-map-number-icon {
   pointer-events: auto;
