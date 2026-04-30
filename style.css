@@ -157,10 +157,15 @@
   height: 100%;
 }
 
+/* 발자취 하단 SVG: 원본 SVG의 글자색(fill)을 존중한다.
+   (예: 고려후기/조선개국 등 색 막대 안 라벨은 흰색이어야 함)
+   단, fill이 없는 텍스트만 검정으로 보정한다. */
 #fp-embed-asset text {
-  fill: #111 !important;
   opacity: 1 !important;
   font-weight: 700 !important;
+}
+#fp-embed-asset text:not([fill]) {
+  fill: #111;
 }
 
 /* -------- 발자취(Leaflet 타일): 숫자 마커 아이콘 -------- */
@@ -889,6 +894,18 @@
 #app-header .hdr-divider:first-child {
   border-top: 0;
 }
+
+/* 헤더 최상단(날짜/UPDATE 바): seal 녹색 바탕 + 흰 글씨 */
+#app-header .hdr-frame > .hdr-divider:first-child {
+  background: #166534; /* seal */
+  color: rgba(255, 255, 255, 0.96) !important;
+}
+#app-header .hdr-frame > .hdr-divider:first-child * {
+  color: rgba(255, 255, 255, 0.96) !important;
+}
+#app-header .hdr-frame > .hdr-divider:first-child .text-stone-400 {
+  color: rgba(255, 255, 255, 0.65) !important;
+}
 #app-header .hdr-vdiv:not(:last-child) {
   border-right: 1px solid rgba(0, 0, 0, 0.85);
 }
@@ -1197,13 +1214,13 @@
 
 /* 21-31세 전용 화면: 상단 "가계도" 제목 제거 + 헤더와 간격 축소 */
 #view-tree.gen21-tight {
-  margin-top: -8px;
+  margin-top: -14px;
 }
 #view-tree.gen21-tight > header {
   display: none;
 }
-#view-tree.gen21-tight .rounded-2xl {
-  padding-top: 6px;
+#view-tree.gen21-tight #tree-hint-wrap {
+  display: none;
 }
 
 /* 1-10세 전용 화면: 헤더 아래로 바짝 */
