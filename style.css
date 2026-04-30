@@ -1139,11 +1139,11 @@
 
 /* 21-31 상단(21-25) 인포그래픽은 가로 스크롤/스와이프로 탐색(25세 선택용) */
 #tree-gen21-top-svg-wrap {
-  touch-action: pan-x;
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 #tree-gen21-top-svg {
-  touch-action: pan-x;
+  touch-action: pan-x pan-y;
 }
 
 /* 11-20세 등 기본 트리 모드에서 "비교용 마운트"가 비어있으면 공간을 차지하지 않게 */
@@ -1752,6 +1752,12 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
 
 #app-header .hdr-brand {
   position: relative;
+  background: #166534; /* seal green */
+}
+
+/* 헤더 타이틀 영역(아천문중 세보): 녹색 바 + 흰 글씨(날씨 배지는 기존 디자인 유지) */
+#app-header .hdr-brand .hdr-wine {
+  color: rgba(255, 255, 255, 0.98);
 }
 
 /* 헤더 날씨: 오른쪽 중간 작은 배지 */

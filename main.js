@@ -3782,7 +3782,8 @@ function initTreeZoomHosts() {
         svgEl.style.transform = `scale(${s})`;
         svgEl.__treeZoom = { simple: true, scale: s };
         try {
-          host.style.touchAction = s > 1.01 ? "none" : "pan-y";
+          const base = host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : "pan-y";
+          host.style.touchAction = s > 1.01 ? "none" : base;
         } catch {
           // ignore
         }
@@ -5005,10 +5006,11 @@ function attachTreeZoomState(svgEl, zoom, initialTransform) {
   try {
     const host = svgEl.closest?.(".tree-zoom-host");
     if (host) {
-      host.style.touchAction = "pan-y";
+      const base = host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : "pan-y";
+      host.style.touchAction = base;
       zoom.on("zoom.touchAction", (event) => {
         const k = Number(event?.transform?.k || 1);
-        host.style.touchAction = k > 1.01 ? "none" : "pan-y";
+        host.style.touchAction = k > 1.01 ? "none" : base;
       });
     }
   } catch {
@@ -6507,6 +6509,13 @@ function initTreeMiniZoomButtons() {
 function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
   // (중요) 11-20세는 1-10세와 완전 독립 렌더러.
   // 지금 단계 목표: "세대별 컬럼 배치"만 먼저 정확히 고정.
+  // (모바일 UX) 11-20세는 "가로 스크롤"이 기본 탐색이므로 pan-x를 허용한다(확대 시에는 none으로 전환됨).
+  try {
+    wrap.dataset.allowPanX = "1";
+    wrap.style.touchAction = "pan-x pan-y";
+  } catch {
+    // ignore
+  }
   try {
     delete svgEl.__treeZoom;
   } catch {

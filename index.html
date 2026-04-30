@@ -352,11 +352,14 @@
       <!-- 가계도 -->
       <div id="view-tree" class="view-panel hidden flex flex-col">
         <header id="tree-title-header" class="mb-4 text-center hidden"></header>
-        <div class="rounded-2xl border border-stone-200/80 bg-white/90 p-4 shadow-sm">
-          <p id="tree-hint" class="mb-2 text-xs text-stone-500"></p>
+        <!-- (가독성) 헤더 박스와 좌/우 끝선 맞춤: 내부 렌더링 박스들이 p-4로 인셋되지 않게 한다 -->
+        <div class="rounded-2xl border border-stone-200/80 bg-white/90 shadow-sm">
+          <div class="px-4 pt-4">
+            <p id="tree-hint" class="mb-2 text-xs text-stone-500"></p>
+          </div>
 
           <!-- 기본(기존) 트리 + (추가) 비교용 렌더링 -->
-          <div id="tree-dual-wrap" class="flex flex-col gap-3 sm:flex-row">
+          <div id="tree-dual-wrap" class="flex flex-col gap-3 px-0 pb-4 sm:flex-row">
             <!-- 기본(기존) 트리 SVG -->
             <div
               id="tree-svg-wrap"
@@ -375,7 +378,7 @@
           </div>
 
           <!-- 11-20세 전용: 하단 인터랙티브 체인(원/사슬 + 상세 설명) -->
-          <section id="tree-gen11-chain" class="hidden mt-3" aria-label="11-20세 체인 박스">
+          <section id="tree-gen11-chain" class="hidden mt-3 px-0 pb-4" aria-label="11-20세 체인 박스">
             <div class="tree-gen11-chain-frame">
               <div class="tree-gen11-chain-canvas">
                 <svg id="tree-gen11-chain-svg" class="tree-gen11-chain-svg" role="img" aria-label="11-20세 상호작용 체인"></svg>
@@ -388,7 +391,7 @@
           </section>
 
           <!-- 21-31세 전용(상단/하단 2박스) -->
-          <section id="tree-gen21-wrap" class="hidden space-y-4">
+          <section id="tree-gen21-wrap" class="hidden space-y-4 pb-4">
             <!-- 상단: 21-25세 (정사각형 박스) -->
             <div class="rounded-2xl border border-stone-200 bg-white/80 p-3">
               <div>
@@ -397,7 +400,7 @@
               </div>
               <div
                 id="tree-gen21-top-svg-wrap"
-                class="mt-2 aspect-square w-full overflow-x-auto overflow-y-hidden rounded-xl border border-stone-100 bg-stone-50/70"
+                class="mt-2 aspect-square w-full overflow-x-auto overflow-y-auto rounded-xl border border-stone-100 bg-stone-50/70"
               >
                 <svg id="tree-gen21-top-svg" class="h-full w-full" role="img" aria-label="21-25세"></svg>
               </div>
@@ -421,7 +424,7 @@
           </section>
 
           <!-- 32세 이후 전용: 상단(32세 명단 6열) + 하단(선택 기준 가계도 트리) -->
-          <section id="tree-gen32-wrap" class="hidden space-y-4">
+          <section id="tree-gen32-wrap" class="hidden space-y-4 pb-4">
             <div class="tree-gen32-panel rounded-2xl border border-stone-200/90 bg-[#f3efe4] p-4 shadow-sm">
               <div class="flex flex-wrap items-end justify-between gap-2">
                 <div>
