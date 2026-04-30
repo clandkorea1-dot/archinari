@@ -413,23 +413,6 @@
                   <p id="tree-gen21-bottom-hint" class="mt-0.5 text-[11px] text-stone-500"></p>
                 </div>
               </div>
-              <div class="mt-2 flex flex-wrap items-center gap-2">
-                <input
-                  id="tree-gen21-find-input"
-                  type="search"
-                  inputmode="search"
-                  autocomplete="off"
-                  placeholder="이름 또는 ID로 찾기"
-                  class="h-10 flex-1 rounded-xl border border-stone-200 bg-white/90 px-3 text-sm text-ink-900 outline-none"
-                />
-                <button
-                  id="tree-gen21-find-btn"
-                  type="button"
-                  class="h-10 shrink-0 rounded-xl border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700"
-                >
-                  찾기
-                </button>
-              </div>
               <div
                 id="tree-gen21-bottom-svg-wrap"
                 class="tree-zoom-host relative min-h-[360px] w-full overflow-x-auto overflow-y-hidden rounded-xl border border-stone-100 bg-stone-50/80"
@@ -467,10 +450,7 @@
       </div>
 
       <!-- 선조의 발자취 (지도) -->
-      <div id="view-map" class="view-panel hidden flex flex-col">
-        <header class="mb-2 text-center">
-          <p class="text-sm text-stone-600">선조의 행적을 지도로 봅니다.</p>
-        </header>
+      <div id="view-map" class="view-panel hidden -mt-1 flex flex-col pb-10">
         <div
           class="relative w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
           style="aspect-ratio: 4 / 3; max-height: min(52vh, 380px)"

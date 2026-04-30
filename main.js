@@ -7426,8 +7426,13 @@ function syncTreeDualPanelChrome() {
   if (baseWrap) baseWrap.classList.toggle("hidden", g);
   if (gen21Wrap) gen21Wrap.classList.toggle("hidden", !g21);
   if (gen32Wrap) gen32Wrap.classList.toggle("hidden", !g32);
-  if (titleHeader) titleHeader.classList.toggle("hidden", g);
-  if (viewTree) viewTree.classList.toggle("gen21-tight", g);
+  // 빈 제목 헤더는 쓰이지 않음; 표시 시 mb-4만 남아 1-10·11-20·기본 화면 상단이 벌어짐
+  if (titleHeader) titleHeader.classList.add("hidden");
+  const g11tight = treeViewMode === "genrange_11_20" && !!treeGenFilter;
+  if (viewTree) {
+    viewTree.classList.toggle("gen21-tight", g);
+    viewTree.classList.toggle("gen11to20-tight", g11tight);
+  }
   // (요청) 21-31 전용에서는 "표시 범위..." 문구를 노출하지 않는다(상단 공간도 절약).
   if (hint) {
     if (g21) hint.textContent = "";
@@ -8570,70 +8575,6 @@ function ensureGen21BottomZoomToolbar(bottomWrap, bottomSvg) {
   if (!hook()) setTimeout(hook, 0);
 }
 
-function ensureGen21BottomFindUI() {
-  const input = document.getElementById("tree-gen21-find-input");
-  const btn = document.getElementById("tree-gen21-find-btn");
-  const wrap = document.getElementById("tree-gen21-bottom-svg-wrap");
-  const svgEl = document.getElementById("tree-gen21-bottom-svg");
-  if (!input || !btn || !wrap || !svgEl) return;
-
-  const focusByIdOrName = (q) => {
-    const query = String(q || "").trim();
-    if (!query) return false;
-    const model = svgEl.__eightKinLikeModel;
-    const zoomRef = svgEl.__eightKinLikeZoom;
-    if (!model || !model.byId || !zoomRef || !zoomRef.svg) return false;
-
-    const byId = model.byId;
-    const direct = byId.get(query);
-    let target = direct || null;
-    if (!target) {
-      const nq = query.replace(/\s+/g, "");
-      for (const n of byId.values()) {
-        const nm = String(n.name || "").replace(/\s+/g, "");
-        if (nm && nm.includes(nq)) {
-          target = n;
-          break;
-        }
-      }
-    }
-    if (!target) return false;
-
-    try {
-      const { zoom, svg } = zoomRef;
-      const vb = svgEl.viewBox?.baseVal;
-      const vbW = vb?.width || 360;
-      const vbH = vb?.height || 360;
-      const cur = svgEl.__zoom;
-      const k = cur && Number.isFinite(cur.k) ? cur.k : 1;
-      const x = Number(target.x || 0);
-      const y = Number(target.y || 0);
-      const tx = vbW / 2 - x * k;
-      const ty = vbH / 2 - y * k;
-      svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const run = () => {
-    const ok = focusByIdOrName(input.value);
-    if (!ok) {
-      input.style.outline = "2px solid rgba(220, 38, 38, 0.45)";
-      setTimeout(() => (input.style.outline = ""), 700);
-    }
-  };
-
-  if (!btn.dataset.bound) {
-    btn.dataset.bound = "1";
-    btn.addEventListener("click", run);
-    input.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter") run();
-    });
-  }
-}
-
 function paintGenRange21to31DescEightRule(rootId, people, minGen, maxGen, wrap, svgEl) {
   // (중요) 21-31세 하단 렌더링 규칙은 "홈 8촌 찾기"와 동일한 가로 배치 규칙을 사용한다.
   const rid = String(rootId || "").trim();
@@ -8768,7 +8709,6 @@ function paintGenRange21to31DescEightRule(rootId, people, minGen, maxGen, wrap, 
 
   // (요청) 하단에도 확대/축소/원위치 아이콘 제공
   ensureGen21BottomZoomToolbar(wrap, svgEl);
-  ensureGen21BottomFindUI();
 }
 
 async function updateTreeView() {

@@ -109,25 +109,28 @@
 
 .fp-embed-controls {
   position: absolute;
-  right: 10px;
-  top: 10px;
+  left: 8px;
+  bottom: 8px;
+  right: auto;
+  top: auto;
   z-index: 5;
   display: inline-flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
   pointer-events: auto;
 }
 
 .fp-embed-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.16);
   background: rgba(255, 255, 255, 0.92);
   color: rgba(0, 0, 0, 0.85);
   font-weight: 900;
+  font-size: 13px;
   line-height: 1;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.07);
   backdrop-filter: blur(6px);
 }
 
@@ -1199,10 +1202,24 @@
 
 /* 1-10세 전용 화면: 헤더 아래로 바짝 */
 #view-tree.gen1to10-tight {
-  margin-top: -10px;
+  margin-top: -16px;
 }
 #view-tree.gen1to10-tight .rounded-2xl {
   padding-top: 6px;
+}
+
+/* 11-20세 전용: 상단 여백 축소(1-10과 유사) */
+#view-tree.gen11to20-tight {
+  margin-top: -14px;
+}
+#view-tree.gen11to20-tight .rounded-2xl {
+  padding-top: 6px;
+}
+#view-tree.gen11to20-tight #tree-hint {
+  margin-bottom: 0.375rem;
+}
+#view-tree.gen11to20-tight #tree-gen11-chain {
+  margin-top: 0.5rem;
 }
 
 /* 32세 이후: 명단 그리드(인원 증가 대비) */
