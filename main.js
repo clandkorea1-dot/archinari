@@ -3794,14 +3794,17 @@ function initTreeZoomHosts() {
         const st = svgEl?.__treeZoom;
         return st && st.simple ? Number(st.scale || 1) : 1;
       };
-      const clampScale = (s) => Math.max(1, Math.min(2.6, s));
+      const clampScale = (svgEl, s) => {
+        const minS = Number(svgEl?.__simpleZoomMinScale || 1);
+        return Math.max(minS > 0 ? minS : 1, Math.min(2.6, s));
+      };
       const applySimpleScale = (svgEl, nextScale, centerClientX, centerClientY) => {
         if (!svgEl) return;
         const base = svgEl.__simpleZoomBase;
         const bw = Number(base?.w || 0);
         const bh = Number(base?.h || 0);
         if (!(bw > 0 && bh > 0)) return;
-        const s = clampScale(nextScale);
+        const s = clampScale(svgEl, nextScale);
         const hostRect = host.getBoundingClientRect();
         const cx = Number.isFinite(centerClientX) ? centerClientX - hostRect.left : hostRect.width * 0.5;
         const cy = Number.isFinite(centerClientY) ? centerClientY - hostRect.top : hostRect.height * 0.5;
@@ -3826,6 +3829,8 @@ function initTreeZoomHosts() {
         try {
           const baseTouch = svgEl.__simpleZoomPan ? "pan-x pan-y" : "pan-y";
           host.style.touchAction = s > 1.01 ? "none" : baseTouch;
+          // 세로 팬이 필요하면 overflow-y도 열어준다(11-20 상단 등)
+          if (svgEl.__simpleZoomPan) host.style.overflowY = "auto";
         } catch {
           // ignore
         }
@@ -3947,7 +3952,8 @@ function initTreeZoomHosts() {
         const cur = Number(st.scale || 1);
         const next =
           act === "in" ? cur * 1.12 : act === "out" ? cur / 1.12 : 1;
-        const s = Math.max(0.55, Math.min(1.6, next));
+        const minS = Number(svgEl?.__simpleZoomMinScale || 1);
+        const s = Math.max(minS > 0 ? minS : 1, Math.min(1.6, next));
         const base = svgEl?.__simpleZoomBase;
         const bw = Number(base?.w || 0);
         const bh = Number(base?.h || 0);
@@ -3979,6 +3985,7 @@ function initTreeZoomHosts() {
           const baseTouch =
             host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : svgEl?.__simpleZoomPan ? "pan-x pan-y" : "pan-y";
           host.style.touchAction = s > 1.01 ? "none" : baseTouch;
+          if (svgEl?.__simpleZoomPan) host.style.overflowY = "auto";
         } catch {
           // ignore
         }
@@ -6710,6 +6717,8 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
     wrap.style.touchAction = "pan-x pan-y";
     // (제스처) 11-20 상단은 핀치줌 + 드래그 팬을 허용한다(다른 모드에 영향 방지용 플래그).
     wrap.dataset.simpleGesture = "1";
+    // 확대 시 세로 이동도 가능하도록(기본 class는 overflow-y-hidden이라 inline으로 덮어씀)
+    wrap.style.overflowY = "auto";
   } catch {
     // ignore
   }
@@ -7928,6 +7937,29 @@ function paintGen2125TopInfographic(svg, svgEl, m) {
     // simple 줌(21–25 상단)은 transform 대신 width/height 확장으로 스크롤 가능한 캔버스를 만든다.
     svgEl.__simpleZoomBase = { w: Number(canvasW) || 0, h: Number(totalH) || 0 };
     svgEl.__simpleZoomPan = true;
+    // (요청) 처음(축소) 화면은 박스 안에 전체가 한꺼번에 보이도록 "맞춤" 배율을 최소 배율로 둔다.
+    const host = svgEl.closest?.(".tree-zoom-host");
+    if (host) {
+      const hw = host.clientWidth || 0;
+      const hh = host.clientHeight || 0;
+      const bw = Number(svgEl.__simpleZoomBase?.w || 0);
+      const bh = Number(svgEl.__simpleZoomBase?.h || 0);
+      if (hw > 0 && hh > 0 && bw > 0 && bh > 0) {
+        const fit = Math.min(1, hw / bw, hh / bh);
+        const minScale = Number.isFinite(fit) && fit > 0 ? fit : 1;
+        svgEl.__simpleZoomMinScale = minScale;
+        svgEl.__treeZoom = { simple: true, scale: minScale };
+        svgEl.style.width = `${Math.max(1, Math.round(bw * minScale))}px`;
+        svgEl.style.height = `${Math.max(1, Math.round(bh * minScale))}px`;
+        try {
+          host.scrollLeft = 0;
+          host.scrollTop = 0;
+          host.style.touchAction = "pan-x pan-y";
+        } catch {
+          // ignore
+        }
+      }
+    }
   } catch {
     // ignore
   }
