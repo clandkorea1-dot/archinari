@@ -3396,10 +3396,6 @@ function showView(viewId) {
   document.querySelectorAll(".view-panel").forEach((el) => {
     el.classList.toggle("hidden", el.id !== viewId);
   });
-  document.querySelectorAll(".nav-tab").forEach((btn) => {
-    const on = btn.dataset.view === viewId;
-    btn.dataset.active = on ? "true" : "false";
-  });
 
   const hdrMap = {
     "view-home": "hdr-tab-home",
@@ -3441,12 +3437,6 @@ function showView(viewId) {
       void updateTreeView();
     });
   }
-}
-
-function initBottomNav() {
-  document.querySelectorAll(".nav-tab").forEach((btn) => {
-    btn.addEventListener("click", () => showView(btn.dataset.view));
-  });
 }
 
 function initHeaderTabs() {
@@ -3791,6 +3781,11 @@ function initTreeZoomHosts() {
         svgEl.style.transformOrigin = "0 0";
         svgEl.style.transform = `scale(${s})`;
         svgEl.__treeZoom = { simple: true, scale: s };
+        try {
+          host.style.touchAction = s > 1.01 ? "none" : "pan-y";
+        } catch {
+          // ignore
+        }
         return;
       }
       if (!st?.zoom || st.initial == null) return;
@@ -4180,18 +4175,13 @@ function initMoreExpanders() {
   if (!host || !modal || !modalBody || !modalTitle || !closeBtn) return;
 
   let moved = null; // { key, node, placeholder, wasCollapsed, btn }
-  let prevBottomNavDisplay = null;
 
   const applyModalOffsets = () => {
     const hdr = document.getElementById("app-header");
-    const nav = document.getElementById("bottom-nav");
     const h = hdr ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
-    const navHidden =
-      !nav || nav.style.display === "none" || nav.hidden || nav.getAttribute("aria-hidden") === "true";
-    const b = navHidden ? 0 : Math.ceil(nav.getBoundingClientRect().height);
     // 헤더/하단탭은 그대로 두고, 그 사이만 전체화면으로 사용
     modal.style.top = `${h}px`;
-    modal.style.bottom = `${b}px`;
+    modal.style.bottom = `0px`;
   };
 
   const closeModal = () => {
@@ -4210,13 +4200,6 @@ function initMoreExpanders() {
     }
     if (node) node.classList.toggle("is-collapsed", !!wasCollapsed);
     if (btn) btn.setAttribute("aria-expanded", "false");
-    const nav = document.getElementById("bottom-nav");
-    if (nav) {
-      if (prevBottomNavDisplay == null) nav.style.removeProperty("display");
-      else nav.style.display = prevBottomNavDisplay;
-      nav.removeAttribute("aria-hidden");
-    }
-    prevBottomNavDisplay = null;
     modalBody.innerHTML = "";
     modal.classList.add("hidden");
     modal.setAttribute("aria-hidden", "true");
@@ -4240,13 +4223,6 @@ function initMoreExpanders() {
 
     btn.setAttribute("aria-expanded", "true");
     moved = { key, node, placeholder, wasCollapsed, btn };
-
-    const nav = document.getElementById("bottom-nav");
-    if (nav) {
-      prevBottomNavDisplay = nav.style.display || "";
-      nav.style.display = "none";
-      nav.setAttribute("aria-hidden", "true");
-    }
     applyModalOffsets();
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
@@ -5025,6 +5001,19 @@ function attachTreeZoomState(svgEl, zoom, initialTransform) {
     initial: initialTransform,
     sel: d3.select(svgEl),
   };
+  // 모바일 UX: 기본(배율 1)에서는 세로 스크롤, 확대 시에는 트리 드래그(팬) 우선
+  try {
+    const host = svgEl.closest?.(".tree-zoom-host");
+    if (host) {
+      host.style.touchAction = "pan-y";
+      zoom.on("zoom.touchAction", (event) => {
+        const k = Number(event?.transform?.k || 1);
+        host.style.touchAction = k > 1.01 ? "none" : "pan-y";
+      });
+    }
+  } catch {
+    // ignore
+  }
 }
 
 function paintD3TreeLayout(root, focusId, wrap, svgEl, fromNested) {
@@ -7506,8 +7495,7 @@ function renderGen32TopPicks(people, selectedId) {
     btn.dataset.active = String(it.id) === String(selectedId || "") ? "true" : "false";
     const female = readNodeGenderIsFemale(it.row);
     const nm = escapeHtml(String(it.name || it.id).trim());
-    const idShort = escapeHtml(String(it.id));
-    btn.innerHTML = `<span class="tree-gen32-pick-name ${female ? "text-emerald-800" : "text-ink-900"}">${nm}</span><span class="tree-gen32-pick-id">${idShort}</span>`;
+    btn.innerHTML = `<span class="tree-gen32-pick-name ${female ? "text-emerald-800" : "text-ink-900"}">${nm}</span>`;
     btn.addEventListener("click", () => {
       gen32SelectedRootId = String(it.id);
       renderGen32TopPicks(lastGen32PanelPeople, gen32SelectedRootId);
@@ -9483,7 +9471,6 @@ async function renderKinshipVisual(id1, id2, keyOpt = "") {
   `;
 }
 
-initBottomNav();
 initTreeControls();
 initPersonDetailActions();
 initHomeActions();

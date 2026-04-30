@@ -47,9 +47,7 @@
     />
     <link rel="stylesheet" href="style.css?v=20260428-01" />
   </head>
-  <body
-    class="min-h-screen bg-paper pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] text-ink-900 antialiased"
-  >
+  <body class="min-h-screen bg-paper pb-6 text-ink-900 antialiased">
     <!-- 공통 고정 헤더(새 헤더): 기존 헤더 내용을 이 박스로 이동 -->
     <header
       id="app-header"
@@ -287,7 +285,7 @@
                     <label for="kinship-id1">문중원 ①</label>
                     <label for="kinship-id2">문중원 ②</label>
                   </div>
-                  <div class="flex min-w-0 flex-nowrap items-center gap-3">
+                  <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                     <div
                       class="flex min-w-0 flex-1 flex-nowrap divide-x divide-stone-200/90 rounded-lg border border-stone-200/70 bg-white/90 px-2 py-1.5 sm:px-2.5 sm:py-2"
                       role="group"
@@ -315,7 +313,7 @@
                     <button
                       type="button"
                       id="kinship-calc-btn"
-                      class="inline-flex h-11 shrink-0 items-center justify-center rounded-xl border border-seal/35 bg-seal px-4 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 active:translate-y-px"
+                      class="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-xl border border-seal/35 bg-seal px-4 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 active:translate-y-px sm:w-auto"
                     >
                       계산
                     </button>
@@ -364,7 +362,7 @@
               id="tree-svg-wrap"
               class="tree-zoom-host relative min-h-[360px] w-full overflow-x-auto overflow-y-hidden rounded-xl border border-stone-100 bg-stone-50/80"
             >
-              <svg id="tree-svg" class="h-full w-full touch-none" role="img" aria-label="가계도"></svg>
+              <svg id="tree-svg" class="h-full w-full" role="img" aria-label="가계도"></svg>
               <div class="tree-zoom-mini" aria-label="가계도 확대·축소">
                 <button type="button" id="tree-zoom-out" class="tree-zoom-mini-btn" aria-label="축소">－</button>
                 <button type="button" id="tree-zoom-reset" class="tree-zoom-mini-btn" aria-label="원위치">⟳</button>
@@ -401,7 +399,7 @@
                 id="tree-gen21-top-svg-wrap"
                 class="mt-2 aspect-square w-full overflow-x-auto overflow-y-hidden rounded-xl border border-stone-100 bg-stone-50/70"
               >
-                <svg id="tree-gen21-top-svg" class="h-full w-full touch-none" role="img" aria-label="21-25세"></svg>
+                <svg id="tree-gen21-top-svg" class="h-full w-full" role="img" aria-label="21-25세"></svg>
               </div>
             </div>
 
@@ -417,7 +415,7 @@
                 id="tree-gen21-bottom-svg-wrap"
                 class="tree-zoom-host relative min-h-[360px] w-full overflow-x-auto overflow-y-hidden rounded-xl border border-stone-100 bg-stone-50/80"
               >
-                <svg id="tree-gen21-bottom-svg" class="h-full w-full touch-none" role="img" aria-label="21-31세"></svg>
+                <svg id="tree-gen21-bottom-svg" class="h-full w-full" role="img" aria-label="21-31세"></svg>
               </div>
             </div>
           </section>
@@ -706,57 +704,6 @@
         <div id="more-fullscreen-body" class="more-fullscreen-body"></div>
       </div>
     </div>
-
-    <nav
-      id="bottom-nav"
-      class="fixed bottom-0 left-0 right-0 z-50 border-t border-stone-200/90 bg-white/95 px-2 pt-2 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur-md"
-      style="padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px))"
-      aria-label="주 메뉴"
-    >
-      <div class="mx-auto flex max-w-lg justify-around gap-1">
-        <button
-          type="button"
-          class="nav-tab flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-xs font-medium text-stone-500 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
-          data-view="view-home"
-          data-active="true"
-        >
-          <span class="material-symbols-outlined text-[22px] leading-none" aria-hidden="true"
-            >home</span
-          >
-          <span>홈</span>
-        </button>
-        <button
-          type="button"
-          class="nav-tab flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-xs font-medium text-stone-500 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
-          data-view="view-tree"
-        >
-          <span class="material-symbols-outlined text-[22px] leading-none" aria-hidden="true"
-            >account_tree</span
-          >
-          <span>가계도</span>
-        </button>
-        <button
-          type="button"
-          class="nav-tab flex flex-1 flex-col items-center gap-0.5 rounded-xl py-1.5 text-[10px] font-medium leading-tight text-stone-500 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal sm:text-xs"
-          data-view="view-map"
-        >
-          <span class="material-symbols-outlined text-[22px] leading-none" aria-hidden="true"
-            >travel_explore</span
-          >
-          <span class="text-center">선조의<br class="sm:hidden" /> 발자취</span>
-        </button>
-        <button
-          type="button"
-          class="nav-tab flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-xs font-medium text-stone-500 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
-          data-view="view-more"
-        >
-          <span class="material-symbols-outlined text-[22px] leading-none" aria-hidden="true"
-            >menu_book</span
-          >
-          <span>아천문중</span>
-        </button>
-      </div>
-    </nav>
 
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
