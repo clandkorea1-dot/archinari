@@ -347,7 +347,7 @@ function applyGen2125PickSelection(treeById) {
       gen21SelectedRootId = picks[0].id;
     }
     if (hint) {
-      hint.textContent = "21–25세: 25세를 선택하여 하단에 직계 후손 확인";
+      hint.textContent = "21-31세: 25세를 선택하여 31세까지 봅니다";
     }
   }
   return { pickSet, picks };

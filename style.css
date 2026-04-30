@@ -1149,6 +1149,20 @@
   transform: translateY(1px);
 }
 
+/* 가계도: 더 작은 미니 줌 버튼(21-25 상단 등) */
+.tree-zoom-mini.tree-zoom-mini--sm {
+  left: 8px;
+  bottom: 8px;
+  gap: 5px;
+}
+.tree-zoom-mini.tree-zoom-mini--sm .tree-zoom-mini-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
 /* 모바일 스크롤 우선: 트리 영역에서 세로 스와이프는 페이지 스크롤로 넘긴다 */
 .tree-zoom-host {
   touch-action: pan-y;
@@ -1236,10 +1250,13 @@
   margin-top: -14px;
 }
 #view-tree.gen11to20-tight .rounded-2xl {
-  padding-top: 6px;
+  padding-top: 0;
+}
+#view-tree.gen11to20-tight #tree-hint-wrap {
+  padding-top: 10px !important; /* pt-4(16px) → 한 칸 위로 */
 }
 #view-tree.gen11to20-tight #tree-hint {
-  margin-bottom: 0.375rem;
+  margin-bottom: 0.25rem;
 }
 #view-tree.gen11to20-tight #tree-gen11-chain {
   margin-top: 0.5rem;
