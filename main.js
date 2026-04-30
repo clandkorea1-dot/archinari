@@ -178,25 +178,34 @@ function renderGen11InteractiveChain() {
     "소수박물관": "소수박물관: 참고 자료/방문 기록 등을 요약해 표시합니다.",
     "반남박씨": "반남박씨: 관련 인물/혼인/기록 등 간단 요약.",
     "김결": "김결: 관련 기록 요약(1~2줄).",
-    "예안 향록": "예안 향록: 문헌/기록 요약(1~2줄).",
+    "창원황씨": "김결에서 연결: 창원황씨 관련 요약(1~2줄).",
+    "예안 향록":
+      "예안향록: 1572-1717년 작성, 유향소를 운영하던 재지 사족의 명부. 약(21세), 지석(18세)",
+    "읍현지":
+      "읍현지: 고려조 과거자: 춘, 현주, 연 본조(이조) 합격자: 흠조,윤석,택룡",
     "문과": "문과: 과거 급제 관련 요약(1~2줄).",
     "이현보": "이현보: 인물 관련 요약(1~2줄).",
     "월천 조목": "월천 조목: 관련 사항 요약(1~2줄).",
-    "의성 비봉산": "의성 비봉산: 장소/연관 기록 요약(1~2줄).",
+    "의성 비봉산": "의성비봉산: 오토재, 9세조 용비와 진민사",
   };
 
-  // 노드 정의: 큰 원 2개 + 각 큰 원에 작은 원들 부착
+  // 노드 정의: 큰 원 2개 + 각 큰 원에 작은 원들 부착 + (요청) 김결·예안 향록에서 뻗는 작은 원
   const big1 = { id: "아치나리", label: "아치나리", r: 23, big: true };
   const big2 = { id: "예안", label: "예안", r: 23, big: true };
   const smallLeft = ["소수박물관", "반남박씨", "김결"].map((t) => ({ id: t, label: t, r: 13 }));
   const smallRight = ["예안 향록", "문과", "이현보", "월천 조목", "의성 비봉산"].map((t) => ({ id: t, label: t, r: 13 }));
-  const nodes = [big1, big2, ...smallLeft, ...smallRight].map((n) => ({ ...n }));
+  const satFromKim = { id: "창원황씨", label: "창원황씨", r: 11, satelliteOf: "김결" };
+  const satFromHyang = { id: "읍현지", label: "읍현지", r: 11, satelliteOf: "예안 향록" };
+  const satNodes = [satFromKim, satFromHyang];
+  const nodes = [big1, big2, ...smallLeft, ...smallRight, ...satNodes].map((n) => ({ ...n }));
 
-  // 링크(사슬): big1-big2 + big1-소형들 + big2-소형들
+  // 링크(사슬): big1-big2 + big1-소형들 + big2-소형들 + 위성(김결→창원황씨, 예안 향록→읍현지)
   const links = [
     { source: big1.id, target: big2.id, dist: 110 },
     ...smallLeft.map((n) => ({ source: big1.id, target: n.id, dist: 64 })),
     ...smallRight.map((n) => ({ source: big2.id, target: n.id, dist: 64 })),
+    { source: "김결", target: "창원황씨", dist: 44 },
+    { source: "예안 향록", target: "읍현지", dist: 44 },
   ];
 
   // 초기 배치
@@ -213,6 +222,16 @@ function renderGen11InteractiveChain() {
     const ang = (-Math.PI / 2) + ((idx + 1) * Math.PI) / (count + 1); // 위→아래 반원
     n.x = baseX + Math.cos(ang) * 78;
     n.y = cy + Math.sin(ang) * 54;
+  });
+
+  // 위성 노드: 부모 작은 원 바깥쪽으로 초기 배치(이후 물리 시뮬이 정리)
+  nodes.forEach((n) => {
+    if (!n.satelliteOf) return;
+    const p = nodes.find((x) => x.id === n.satelliteOf);
+    if (!p) return;
+    const outward = n.id === "창원황씨" ? -1 : 1;
+    n.x = p.x + outward * 36;
+    n.y = p.y + 40;
   });
 
   const svg = d3.select(svgEl);
@@ -2207,6 +2226,9 @@ async function renderEightKinBox(eightJson, paternalChainOpt) {
     : "";
 
   if (!list.length) {
+    box.innerHTML =
+      '<div class="text-sm text-stone-600">표시할 데이터가 없습니다.</div>' +
+      '<div class="mt-1 text-[11px] text-stone-500">서버에 <code class="text-xs">action=eightKin&id=문중원ID</code>를 구현하면 표시됩니다.</div>';
     if (hintEl) {
       hintEl.textContent =
         "8촌 친척 데이터가 비어 있습니다. 서버에 action=eightKin&id=문중원ID 를 구현하면 표시됩니다.";
@@ -2224,7 +2246,6 @@ async function renderEightKinBox(eightJson, paternalChainOpt) {
     return;
   }
 
-  // (홈 박스 설명과 중복되는 긴 안내문은 제거) — 여기서는 결과 요약만 표시
   if (hintEl) hintEl.textContent = "";
 
   let excludedAbove = 0;
@@ -3649,7 +3670,8 @@ function initFootprintsEmbedZoom() {
     const viewH = base.h / st.scale;
     targetSvg.setAttribute("viewBox", `${st.x} ${st.y} ${viewW} ${viewH}`);
     stage.style.cursor = st.scale > 1 ? "grab" : "default";
-    stage.style.touchAction = st.scale > 1 ? "none" : "pan-x pan-y";
+    // 핀치 줌(모바일) + 드래그 이동을 JS에서 처리하므로 항상 제스처를 직접 받는다.
+    stage.style.touchAction = "none";
   };
 
   const reset = () => {
@@ -3720,13 +3742,25 @@ function initFootprintsEmbedZoom() {
   let lastX = 0;
   let lastY = 0;
 
+  // Pinch zoom (mobile): pointer 2개 거리로 스케일 조절
+  const pts = new Map(); // pointerId -> {x,y}
+  let pinchBaseDist = 0;
+  let pinchBaseScale = 1;
+
   stage.addEventListener("pointerdown", (e) => {
-    if (st.scale <= 1) return;
-    if (e.target?.closest?.(".fp-embed-controls")) return;
-    dragging = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
-    stage.style.cursor = "grabbing";
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // 핀치 시작
+    if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      pinchBaseDist = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      pinchBaseScale = st.scale;
+      dragging = false;
+    } else if (pts.size === 1 && st.scale > 1) {
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      stage.style.cursor = "grabbing";
+    }
     try {
       stage.setPointerCapture?.(e.pointerId);
     } catch {
@@ -3735,6 +3769,20 @@ function initFootprintsEmbedZoom() {
   });
 
   stage.addEventListener("pointermove", (e) => {
+    if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // 핀치 중
+    if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      const dist = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const r = stage.getBoundingClientRect();
+      const cx = ((a.x + b.x) * 0.5) - r.left;
+      const cy = ((a.y + b.y) * 0.5) - r.top;
+      zoomTo(pinchBaseScale * (dist / pinchBaseDist), cx, cy);
+      return;
+    }
+
+    // 단일 드래그 이동(확대된 상태에서만)
     if (!dragging) return;
     const dx = e.clientX - lastX;
     const dy = e.clientY - lastY;
@@ -3750,7 +3798,9 @@ function initFootprintsEmbedZoom() {
   });
 
   const endDrag = (e) => {
-    if (!dragging) return;
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinchBaseDist = 0;
+    if (!dragging && pts.size) return;
     dragging = false;
     stage.style.cursor = st.scale > 1 ? "grab" : "default";
     try {
@@ -4786,16 +4836,13 @@ async function loadVoteResponseSheet() {
 
 function renderAncestorsLine(people) {
   const line = document.getElementById("ancestors-line");
-  const hint = document.getElementById("ancestors-hint");
   if (!line) return;
   line.classList.remove("hidden");
   line.innerHTML = "";
   if (!people.length) {
-    if (hint) hint.textContent = "기준 인물을 선택하면 직계 조상이 자동 표시됩니다.";
     line.innerHTML = '<div class="text-sm text-stone-600">표시할 데이터가 없습니다.</div>';
     return;
   }
-  if (hint) hint.textContent = `본인→시조 부계 ${people.length}명`;
 
   // 이미 [본인, 부, 조부, …] 순 — 재정렬하지 않음(표시 속도·직관)
 
