@@ -1364,11 +1364,23 @@ async function hydrateFatherIdsForEightKin(ids, opts = {}) {
 
 function attachEightKinZoomBehavior(svg, gRoot, toolbar) {
   if (typeof d3 === "undefined") return;
+  // 모바일 UX: 기본 배율에서는 페이지 세로 스크롤 우선, 확대 시에는 드래그/줌 조작 우선
+  try {
+    svg.style.touchAction = "pan-y";
+  } catch {
+    // ignore
+  }
   const zoom = d3
     .zoom()
     .scaleExtent([0.12, 6])
     .on("zoom", (event) => {
       gRoot.setAttribute("transform", event.transform.toString());
+      try {
+        const k = Number(event?.transform?.k || 1);
+        svg.style.touchAction = k > 1.01 ? "none" : "pan-y";
+      } catch {
+        // ignore
+      }
     });
   const sel = d3.select(svg);
   sel.call(zoom);
@@ -1429,7 +1441,7 @@ function mountEightKinHorizontalTreeSvg(box, opts) {
   svg.setAttribute("width", "100%");
   svg.setAttribute("height", "100%");
   svg.style.cursor = "grab";
-  svg.style.touchAction = "none";
+  svg.style.touchAction = "pan-y";
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", "8촌 친척 가로 가계도");
 

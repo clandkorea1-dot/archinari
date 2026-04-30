@@ -34,6 +34,14 @@
   touch-action: pan-x pan-y;
 }
 
+/* 구글 내지도(My Maps) iframe 상단 검은 바(타이틀 영역) 숨김용 "크롭"
+   - iframe 내부 UI는 제어 불가(다른 도메인)라 화면에서만 위를 잘라낸다. */
+#map-mymaps-embed {
+  position: relative;
+  top: -44px; /* 상단 바 높이(필요 시 36~56px로 미세 조정) */
+  height: calc(100% + 44px);
+}
+
 /* 발자취: 이미지+마커 오버레이를 함께 줌(변환은 이 래퍼에 적용) */
 #map-leaflet[data-static-map="true"] .map-static-zoom-inner {
   position: absolute;
