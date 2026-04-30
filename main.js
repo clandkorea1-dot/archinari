@@ -5774,7 +5774,10 @@ function ensureGenRangeCompareMounted() {
 
   const miniBody = document.createElement("div");
   miniBody.className = "tree-gen1to10-mini-card-body";
-  miniBody.textContent = "내용을 여기에 추가하세요.";
+  miniBody.textContent =
+    '증손자 태권의 <동사강목> 기록에 비춰 1200년대 생몰로 추정.\n' +
+    '16세기 초 모재 김안국 진민사 편액<연여실기술>\n' +
+    '1656년 대동보에 시조로 기록. 의성김씨 87%가 그의 후손';
 
   mini.appendChild(miniHead);
   mini.appendChild(miniBody);
