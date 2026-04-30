@@ -168,23 +168,24 @@
   fill: #111;
 }
 
-/* 홈 > 촌수계산 > 관계도 보기: 가로 스크롤바가 보이도록(브라우저 기본 숨김 보완) */
-#kinship-visual {
+/* 홈 > 촌수계산 > 관계도 보기: 실제 스크롤 컨테이너(좌/우)에서 막대가 보이도록 */
+#kinship-visual .kinship-scroll {
   scrollbar-gutter: stable both-edges;
   scrollbar-width: auto; /* Firefox */
+  -webkit-overflow-scrolling: touch;
 }
-#kinship-visual::-webkit-scrollbar {
+#kinship-visual .kinship-scroll::-webkit-scrollbar {
   height: 10px;
 }
-#kinship-visual::-webkit-scrollbar-track {
+#kinship-visual .kinship-scroll::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.06);
   border-radius: 999px;
 }
-#kinship-visual::-webkit-scrollbar-thumb {
+#kinship-visual .kinship-scroll::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.22);
   border-radius: 999px;
 }
-#kinship-visual::-webkit-scrollbar-thumb:hover {
+#kinship-visual .kinship-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.32);
 }
 

@@ -9458,7 +9458,7 @@ async function renderKinshipVisual(id1, id2, keyOpt = "") {
 
   wrap.innerHTML = `
     <div class="flex items-stretch gap-3">
-      <div class="min-w-0 flex-1 overflow-x-auto">
+      <div class="kinship-scroll min-w-0 flex-1 overflow-x-auto">
         <div class="flex items-center gap-2">
           ${renderSide(left)}
         </div>
@@ -9470,7 +9470,7 @@ async function renderKinshipVisual(id1, id2, keyOpt = "") {
         <div class="mt-1 text-[11px] text-blue-700">공통 조상</div>
       </div>
 
-      <div class="min-w-0 flex-1 overflow-x-auto">
+      <div class="kinship-scroll min-w-0 flex-1 overflow-x-auto">
         <div class="flex items-center gap-2">
           ${renderSide(right)}
         </div>
