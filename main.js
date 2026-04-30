@@ -6748,6 +6748,14 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
 
   const widthHost = wrap.clientWidth || 360;
   const heightHost = wrap.clientHeight || 360;
+  // (중요) 세로 팬/스크롤을 위해 래퍼 높이를 고정한다.
+  // 그렇지 않으면 확대 시 SVG height에 맞춰 래퍼가 같이 커져 scrollTop이 생기지 않는다.
+  try {
+    wrap.style.height = `${heightHost}px`;
+    wrap.style.maxHeight = `${heightHost}px`;
+  } catch {
+    // ignore
+  }
 
   const PAD_L = 18;
   const PAD_R = 18;
