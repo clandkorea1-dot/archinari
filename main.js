@@ -3778,6 +3778,67 @@ function initMorePageChrome() {
 /** 가계도·8촌 관계도 SVG: ＋/－/맞춤 (초기 맞춤은 attachTreeZoomState 참조) */
 function initTreeZoomHosts() {
   document.querySelectorAll(".tree-zoom-host").forEach((host) => {
+    // simple 줌(21–25 상단 등)에서 확대 시 드래그로 스크롤(팬) 가능하게 한다.
+    // (기본 배율 1에서는 페이지 스크롤 우선)
+    if (!host.dataset.simplePanBound) {
+      host.dataset.simplePanBound = "1";
+      let dragging = false;
+      let moved = false;
+      let suppressClick = false;
+      let lastX = 0;
+      let lastY = 0;
+      host.addEventListener("pointerdown", (e) => {
+        const svgEl = host.querySelector("svg");
+        const st = svgEl?.__treeZoom;
+        const scale = Number(st?.scale || 1);
+        const canPan = !!(st?.simple && svgEl?.__simpleZoomPan && scale > 1.01);
+        if (!canPan) return;
+        if (e.target?.closest?.(".tree-z")) return;
+        dragging = true;
+        moved = false;
+        suppressClick = false;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        try {
+          host.setPointerCapture?.(e.pointerId);
+        } catch {
+          // ignore
+        }
+      });
+      host.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        if (!moved && Math.hypot(dx, dy) >= 3) {
+          moved = true;
+          suppressClick = true;
+        }
+        if (!moved) return;
+        host.scrollLeft -= dx;
+        host.scrollTop -= dy;
+      });
+      const end = () => {
+        dragging = false;
+        // click 이벤트는 pointerup 뒤에 발생하므로, 한 틱 유지 후 해제
+        if (suppressClick) setTimeout(() => (suppressClick = false), 0);
+        moved = false;
+      };
+      host.addEventListener("pointerup", end);
+      host.addEventListener("pointercancel", end);
+      // 드래그로 스크롤 중에는 클릭(25세 선택 등)이 의도치 않게 발동하지 않게 막는다.
+      host.addEventListener(
+        "click",
+        (e) => {
+          if (!suppressClick) return;
+          e.preventDefault();
+          e.stopPropagation();
+        },
+        true
+      );
+    }
+
     host.addEventListener("click", (e) => {
       const btn = e.target.closest(".tree-z");
       if (!btn) return;
@@ -3790,12 +3851,37 @@ function initTreeZoomHosts() {
         const next =
           act === "in" ? cur * 1.12 : act === "out" ? cur / 1.12 : 1;
         const s = Math.max(0.55, Math.min(1.6, next));
-        svgEl.style.transformOrigin = "0 0";
-        svgEl.style.transform = `scale(${s})`;
+        const base = svgEl?.__simpleZoomBase;
+        const bw = Number(base?.w || 0);
+        const bh = Number(base?.h || 0);
+        // base 크기가 있으면 width/height 확장으로 "진짜 캔버스"를 키운다(스크롤/팬 가능)
+        if (bw > 0 && bh > 0) {
+          try {
+            svgEl.style.transform = "";
+            svgEl.style.transformOrigin = "";
+          } catch {
+            // ignore
+          }
+          svgEl.style.width = `${Math.max(1, Math.round(bw * s))}px`;
+          svgEl.style.height = `${Math.max(1, Math.round(bh * s))}px`;
+          if (act === "reset") {
+            try {
+              host.scrollLeft = 0;
+              host.scrollTop = 0;
+            } catch {
+              // ignore
+            }
+          }
+        } else {
+          // fallback: 다른 simple 렌더러는 기존 transform 방식 유지
+          svgEl.style.transformOrigin = "0 0";
+          svgEl.style.transform = `scale(${s})`;
+        }
         svgEl.__treeZoom = { simple: true, scale: s };
         try {
-          const base = host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : "pan-y";
-          host.style.touchAction = s > 1.01 ? "none" : base;
+          const baseTouch =
+            host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : svgEl?.__simpleZoomPan ? "pan-x pan-y" : "pan-y";
+          host.style.touchAction = s > 1.01 ? "none" : baseTouch;
         } catch {
           // ignore
         }
@@ -7731,6 +7817,9 @@ function paintGen2125TopInfographic(svg, svgEl, m) {
   try {
     svgEl.style.width = `${canvasW}px`;
     svgEl.style.height = `${totalH}px`;
+    // simple 줌(21–25 상단)은 transform 대신 width/height 확장으로 스크롤 가능한 캔버스를 만든다.
+    svgEl.__simpleZoomBase = { w: Number(canvasW) || 0, h: Number(totalH) || 0 };
+    svgEl.__simpleZoomPan = true;
   } catch {
     // ignore
   }
