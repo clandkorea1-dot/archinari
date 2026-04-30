@@ -1291,6 +1291,11 @@
   margin-top: 0.5rem;
 }
 
+/* 11-20세 전용(상단): 핀치/드래그 사용 시 버튼형 줌 UI는 숨김 */
+#view-tree.gen11to20-tight #tree-svg-wrap .tree-zoom-mini {
+  display: none;
+}
+
 /* 32세 이후: 명단 그리드(인원 증가 대비) */
 .tree-gen32-pick-scroll {
   scrollbar-gutter: stable;

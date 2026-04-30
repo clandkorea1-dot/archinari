@@ -3787,11 +3787,85 @@ function initTreeZoomHosts() {
       let suppressClick = false;
       let lastX = 0;
       let lastY = 0;
+      const active = new Map(); // pointerId -> { x, y }
+      let pinch = null; // { startDist, startScale, startCx, startCy, startScrollLeft, startScrollTop }
+
+      const readSimpleScale = (svgEl) => {
+        const st = svgEl?.__treeZoom;
+        return st && st.simple ? Number(st.scale || 1) : 1;
+      };
+      const clampScale = (s) => Math.max(1, Math.min(2.6, s));
+      const applySimpleScale = (svgEl, nextScale, centerClientX, centerClientY) => {
+        if (!svgEl) return;
+        const base = svgEl.__simpleZoomBase;
+        const bw = Number(base?.w || 0);
+        const bh = Number(base?.h || 0);
+        if (!(bw > 0 && bh > 0)) return;
+        const s = clampScale(nextScale);
+        const hostRect = host.getBoundingClientRect();
+        const cx = Number.isFinite(centerClientX) ? centerClientX - hostRect.left : hostRect.width * 0.5;
+        const cy = Number.isFinite(centerClientY) ? centerClientY - hostRect.top : hostRect.height * 0.5;
+        const prev = readSimpleScale(svgEl);
+        // 현재 center가 가리키는 "콘텐츠 좌표"를 유지하도록 scroll을 보정
+        const prevW = bw * prev;
+        const prevH = bh * prev;
+        const nextW = bw * s;
+        const nextH = bh * s;
+        const px = (host.scrollLeft + cx) / Math.max(1, prevW);
+        const py = (host.scrollTop + cy) / Math.max(1, prevH);
+        try {
+          svgEl.style.transform = "";
+          svgEl.style.transformOrigin = "";
+        } catch {
+          // ignore
+        }
+        svgEl.style.width = `${Math.max(1, Math.round(nextW))}px`;
+        svgEl.style.height = `${Math.max(1, Math.round(nextH))}px`;
+        svgEl.__treeZoom = { simple: true, scale: s };
+        // touch-action 전환: 확대 시 조작 우선
+        try {
+          const baseTouch = svgEl.__simpleZoomPan ? "pan-x pan-y" : "pan-y";
+          host.style.touchAction = s > 1.01 ? "none" : baseTouch;
+        } catch {
+          // ignore
+        }
+        try {
+          host.scrollLeft = px * nextW - cx;
+          host.scrollTop = py * nextH - cy;
+        } catch {
+          // ignore
+        }
+      };
+
       host.addEventListener("pointerdown", (e) => {
         const svgEl = host.querySelector("svg");
         const st = svgEl?.__treeZoom;
         const scale = Number(st?.scale || 1);
-        const canPan = !!(st?.simple && svgEl?.__simpleZoomPan && scale > 1.01);
+        const canGesture = !!(st?.simple && svgEl?.__simpleZoomPan && host.dataset.simpleGesture === "1");
+        if (!canGesture) return;
+        active.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        // 2포인터가 되면 pinch 시작
+        if (active.size === 2) {
+          const pts = [...active.values()];
+          const dx = pts[0].x - pts[1].x;
+          const dy = pts[0].y - pts[1].y;
+          pinch = {
+            startDist: Math.hypot(dx, dy),
+            startScale: readSimpleScale(svgEl),
+            startCx: (pts[0].x + pts[1].x) * 0.5,
+            startCy: (pts[0].y + pts[1].y) * 0.5,
+          };
+          dragging = false;
+          moved = true;
+          suppressClick = true;
+          try {
+            host.setPointerCapture?.(e.pointerId);
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        const canPan = scale > 1.01;
         if (!canPan) return;
         if (e.target?.closest?.(".tree-z")) return;
         dragging = true;
@@ -3806,6 +3880,21 @@ function initTreeZoomHosts() {
         }
       });
       host.addEventListener("pointermove", (e) => {
+        const svgEl = host.querySelector("svg");
+        if (active.has(e.pointerId)) active.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        // pinch 중이면 스케일 적용
+        if (pinch && active.size >= 2 && svgEl?.__treeZoom?.simple) {
+          const pts = [...active.values()].slice(0, 2);
+          const dx = pts[0].x - pts[1].x;
+          const dy = pts[0].y - pts[1].y;
+          const dist = Math.max(1, Math.hypot(dx, dy));
+          const ratio = dist / Math.max(1, pinch.startDist || 1);
+          const next = pinch.startScale * ratio;
+          const cx = (pts[0].x + pts[1].x) * 0.5;
+          const cy = (pts[0].y + pts[1].y) * 0.5;
+          applySimpleScale(svgEl, next, cx, cy);
+          return;
+        }
         if (!dragging) return;
         const dx = e.clientX - lastX;
         const dy = e.clientY - lastY;
@@ -3819,14 +3908,22 @@ function initTreeZoomHosts() {
         host.scrollLeft -= dx;
         host.scrollTop -= dy;
       });
-      const end = () => {
+      const endDragOnly = () => {
         dragging = false;
         // click 이벤트는 pointerup 뒤에 발생하므로, 한 틱 유지 후 해제
         if (suppressClick) setTimeout(() => (suppressClick = false), 0);
         moved = false;
       };
-      host.addEventListener("pointerup", end);
-      host.addEventListener("pointercancel", end);
+      host.addEventListener("pointerup", (e) => {
+        active.delete(e.pointerId);
+        if (active.size < 2) pinch = null;
+        endDragOnly();
+      });
+      host.addEventListener("pointercancel", (e) => {
+        active.delete(e.pointerId);
+        if (active.size < 2) pinch = null;
+        endDragOnly();
+      });
       // 드래그로 스크롤 중에는 클릭(25세 선택 등)이 의도치 않게 발동하지 않게 막는다.
       host.addEventListener(
         "click",
@@ -6611,6 +6708,8 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
   try {
     wrap.dataset.allowPanX = "1";
     wrap.style.touchAction = "pan-x pan-y";
+    // (제스처) 11-20 상단은 핀치줌 + 드래그 팬을 허용한다(다른 모드에 영향 방지용 플래그).
+    wrap.dataset.simpleGesture = "1";
   } catch {
     // ignore
   }
@@ -6629,6 +6728,13 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
     // ignore
   }
   svgEl.__treeZoom = { simple: true, scale: 1 };
+  // simple 줌 base(스크롤 캔버스 크기)는 이 렌더러가 실제 픽셀 폭/높이를 만들 때 세팅한다.
+  // (초기값만 마련; paint 단계에서 실제 값으로 덮어씀)
+  try {
+    svgEl.__simpleZoomPan = true;
+  } catch {
+    // ignore
+  }
   while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
 
   const widthHost = wrap.clientWidth || 360;
@@ -6859,6 +6965,8 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
   try {
     svgEl.style.width = `${canvasW}px`;
     svgEl.style.height = `${heightHost}px`;
+    svgEl.__simpleZoomBase = { w: Number(canvasW) || 0, h: Number(heightHost) || 0 };
+    svgEl.__simpleZoomPan = true;
   } catch {
     // ignore
   }
@@ -7961,6 +8069,13 @@ function paintGenRange21to25TopInfographic(people, wrap, svgEl) {
     // ignore
   }
   svgEl.__treeZoom = { simple: true, scale: 1 };
+  // (제스처) 21-25 상단은 핀치줌 + 드래그 팬 허용(전용 플래그)
+  try {
+    wrap.dataset.simpleGesture = "1";
+    wrap.dataset.allowPanX = "1";
+  } catch {
+    // ignore
+  }
 
   const model = getOrComputeGen2125TopModel(people, wrap);
   if (!model.ok) {
