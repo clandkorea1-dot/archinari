@@ -512,11 +512,24 @@
           구글 내지도를 그대로 삽입했습니다. 지도 내부의 확대/이동을 사용하세요.
         </p>
 
-        <!-- 발자취: 하단 자료(SVG) -->
+        <!-- 발자취: 하단 자료(SVG) — 전체화면은 이 박스(fp-embed-stage)만 이동 -->
         <section
           class="mt-3 w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
           aria-label="선조의 발자취 자료"
         >
+          <div class="fp-embed-section-toolbar">
+            <span class="fp-embed-section-toolbar-title">인포그래픽</span>
+            <button
+              type="button"
+              id="map-fp-fullscreen-open"
+              class="fp-embed-fullscreen-open"
+              aria-expanded="false"
+              aria-haspopup="dialog"
+              aria-controls="map-fp-fullscreen"
+            >
+              전체화면
+            </button>
+          </div>
           <div class="fp-embed-stage" id="fp-embed-stage" role="group" aria-label="발자취 자료 보기">
             <div class="fp-embed-controls" aria-label="발자취 자료 확대·축소">
               <button type="button" id="fp-zoom-out" class="fp-embed-btn" aria-label="축소">－</button>
@@ -697,6 +710,29 @@
           </button>
         </div>
         <div id="more-fullscreen-body" class="more-fullscreen-body"></div>
+      </div>
+    </div>
+
+    <!-- 발자취 전용: 하단 인포그래픽 박스(fp-embed-stage)만 전체화면(아천문중 모달과 동일 패턴) -->
+    <div id="map-fp-fullscreen" class="map-fp-fullscreen more-fullscreen hidden" aria-hidden="true">
+      <div
+        class="more-fullscreen-panel map-fp-fullscreen-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="map-fp-fullscreen-title"
+      >
+        <div class="more-fullscreen-head">
+          <div id="map-fp-fullscreen-title" class="more-fullscreen-title">발자취 인포그래픽</div>
+          <button
+            type="button"
+            id="map-fp-fullscreen-close"
+            class="more-fullscreen-close"
+            aria-label="전체화면 닫기"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">close_fullscreen</span>
+          </button>
+        </div>
+        <div id="map-fp-fullscreen-body" class="more-fullscreen-body map-fp-fullscreen-body"></div>
       </div>
     </div>
 

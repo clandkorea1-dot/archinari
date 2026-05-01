@@ -174,7 +174,8 @@ function renderGen11InteractiveChain() {
 
   const NODE_DETAILS = {
     "아치나리": "아치나리 관련 메모(예시) — 1~2줄 설명을 넣을 수 있습니다.",
-    "예안": "예안 관련 메모(예시) — 클릭 시 이 설명이 표시됩니다.",
+    "예안":
+      "예안파(평장사공파)는 춘의 입향한 이후 증손자 을방이 듬버리, 다른 현손자 효우가 태곡으로 이거하였습니다. 을방의 후손인 우리 선조는 영주 지천, 상운 운계로 분가하였고 운계에서는 봉화 황전으로 이거합니다. 자세한 분파 경로가 위에 표시되었습니다.",
     "소수박물관": "소수박물관: 참고 자료/방문 기록 등을 요약해 표시합니다.",
     "반남박씨": "반남박씨: 관련 인물/혼인/기록 등 간단 요약.",
     "김결": "김결: 관련 기록 요약(1~2줄).",
@@ -183,7 +184,8 @@ function renderGen11InteractiveChain() {
       "예안향록: 1572-1717년 작성, 유향소를 운영하던 재지 사족의 명부. 약(21세), 지석(18세)",
     "읍현지":
       "읍현지: 고려조 과거자: 춘, 현주, 연 본조(이조) 합격자: 흠조,윤석,택룡",
-    "문과": "문과: 과거 급제 관련 요약(1~2줄).",
+    "문과":
+      "조선의 과거합격자(평장사공파) : 흠조(17) 윤석(18) 택룡(20) 만휴(23) 직(27) 병해(29) 진원(30), 문과방목에 예안김씨로 오기된 것 포함",
     "이현보": "이현보: 인물 관련 요약(1~2줄).",
     "월천 조목": "월천 조목: 관련 사항 요약(1~2줄).",
     "의성 비봉산": "의성비봉산: 오토재, 9세조 용비와 진민사",
@@ -3425,7 +3427,18 @@ form.addEventListener("submit", async (e) => {
 
 /* ---------- 하단 내비 ---------- */
 
+/** 발자취 인포그래픽 전체화면 모달 닫기(초기화 전·탭 전환 시에도 안전한 no-op) */
+let closeMapFpInfographicFullscreen = () => {};
+
 function showView(viewId) {
+  if (viewId !== "view-map") {
+    try {
+      closeMapFpInfographicFullscreen();
+    } catch {
+      // ignore
+    }
+  }
+
   document.querySelectorAll(".view-panel").forEach((el) => {
     el.classList.toggle("hidden", el.id !== viewId);
   });
@@ -3504,6 +3517,12 @@ function initHeaderTabs() {
     if (scrollToId) {
       const el = document.getElementById(scrollToId);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      const moreWrap = document.getElementById("hdr-submenu-more");
+      if (moreWrap?.contains(btn)) {
+        moreWrap.querySelectorAll("button.hdr-subbtn").forEach((b) => {
+          b.setAttribute("data-active", b === btn ? "true" : "false");
+        });
+      }
     }
   });
 }
@@ -3814,6 +3833,123 @@ function initFootprintsEmbedZoom() {
   stage.addEventListener("pointercancel", endDrag);
 
   reset();
+
+  try {
+    stage.__fpEmbedReflow = () => {
+      reset();
+    };
+  } catch {
+    // ignore
+  }
+}
+
+/** 발자취: 하단 인포그래픽 박스(#fp-embed-stage)만 전체화면 — DOM 이동 후 복귀(아천문중과 동일 패턴) */
+function initMapFpInfographicFullscreen() {
+  const modal = document.getElementById("map-fp-fullscreen");
+  const modalBody = document.getElementById("map-fp-fullscreen-body");
+  const closeBtn = document.getElementById("map-fp-fullscreen-close");
+  const openBtn = document.getElementById("map-fp-fullscreen-open");
+  const stage = document.getElementById("fp-embed-stage");
+  if (!modal || !modalBody || !closeBtn || !openBtn || !stage) return;
+
+  let placeholder = null;
+  let resizeBound = false;
+
+  const onWinResizeWhileOpen = () => {
+    if (!modal.classList.contains("hidden")) applyModalOffsets();
+  };
+
+  const attachResize = () => {
+    if (resizeBound) return;
+    window.addEventListener("resize", onWinResizeWhileOpen);
+    resizeBound = true;
+  };
+
+  const detachResize = () => {
+    if (!resizeBound) return;
+    window.removeEventListener("resize", onWinResizeWhileOpen);
+    resizeBound = false;
+  };
+
+  const applyModalOffsets = () => {
+    const hdr = document.getElementById("app-header");
+    const h = hdr ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
+    modal.style.top = `${h}px`;
+    modal.style.bottom = "0px";
+  };
+
+  const reflowStage = () => {
+    requestAnimationFrame(() => {
+      try {
+        const fn = stage.__fpEmbedReflow;
+        if (typeof fn === "function") fn();
+      } catch {
+        // ignore
+      }
+    });
+  };
+
+  const closeModal = () => {
+    detachResize();
+    if (!placeholder) {
+      modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
+      openBtn.setAttribute("aria-expanded", "false");
+      return;
+    }
+    try {
+      const parent = placeholder.parentNode;
+      if (parent && stage) parent.insertBefore(stage, placeholder);
+      placeholder.remove();
+    } catch {
+      // ignore
+    }
+    placeholder = null;
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+    openBtn.setAttribute("aria-expanded", "false");
+    reflowStage();
+  };
+
+  closeMapFpInfographicFullscreen = closeModal;
+
+  const openModal = () => {
+    if (placeholder) return;
+    const parent = stage.parentNode;
+    if (!parent) return;
+
+    placeholder = document.createElement("div");
+    placeholder.className = "fp-embed-stage-placeholder";
+    placeholder.setAttribute("data-map-fp-placeholder", "");
+    parent.insertBefore(placeholder, stage);
+    modalBody.appendChild(stage);
+
+    applyModalOffsets();
+    attachResize();
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+    openBtn.setAttribute("aria-expanded", "true");
+    reflowStage();
+  };
+
+  openBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    openModal();
+  });
+
+  closeBtn.addEventListener("click", () => {
+    closeModal();
+  });
+
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (modal.classList.contains("hidden")) return;
+    closeModal();
+  });
 }
 
 /** 아천문중 벤토 페이지: 맨 위로 */
@@ -9799,6 +9935,7 @@ initMapMiniControls();
 initStaticMapInlineZoom();
 initTimelineInlineEdits();
 initFootprintsEmbedZoom();
+initMapFpInfographicFullscreen();
 
 // 저장된 기준 인물이 있으면 자동 복원
 try {
