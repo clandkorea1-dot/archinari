@@ -3432,132 +3432,11 @@ form.addEventListener("submit", async (e) => {
 
 /** 발자취 인포그래픽 전체화면 모달 닫기(초기화 전·탭 전환 시에도 안전한 no-op) */
 let closeMapFpInfographicFullscreen = () => {};
-/** 발자취 지도 전체화면 모달 닫기(초기화 전·탭 전환 시에도 안전한 no-op) */
-let closeMapFullscreen = () => {};
-
-function setAnyModalOpen(on) {
-  try {
-    document.body?.setAttribute("data-any-modal-open", on ? "1" : "0");
-  } catch {
-    // ignore
-  }
-}
-
-function initPageQuickNav() {
-  const host = document.getElementById("page-quicknav");
-  if (!host) return;
-
-  const CFG = {
-    "view-home": [
-      { id: "search-form", label: "본인 확인" },
-      { id: "ancestors-refresh-btn", label: "직계 조상" },
-      { id: "eight-kin-box-title", label: "8촌 친척" },
-      { id: "kinship-calc-title", label: "촌수 계산" },
-    ],
-    "view-tree": [
-      { id: "tree-hint-wrap", label: "안내" },
-      { id: "tree-svg-wrap", label: "가계도" },
-      { id: "tree-gen11-chain", label: "체인" },
-      { id: "tree-gen21-wrap", label: "21–31" },
-      { id: "tree-gen32-wrap", label: "32+" },
-    ],
-    "view-map": [
-      { id: "map-stage", label: "지도" },
-      { id: "fp-embed-stage", label: "인포그래픽" },
-    ],
-    "view-more": [
-      { id: "more-charter", label: "정관" },
-      { id: "more-property", label: "문중재산" },
-      { id: "more-notice", label: "공지사항" },
-      { id: "more-vote", label: "문중원투표" },
-    ],
-  };
-
-  let currentViewId = "";
-  let io = null;
-
-  const clearObserver = () => {
-    try {
-      io?.disconnect?.();
-    } catch {
-      // ignore
-    }
-    io = null;
-  };
-
-  const setActive = (targetId) => {
-    host.querySelectorAll(".page-quicknav-btn").forEach((b) => {
-      b.setAttribute("data-active", b.getAttribute("data-target") === targetId ? "true" : "false");
-    });
-  };
-
-  const mountFor = (viewId) => {
-    currentViewId = String(viewId || "");
-    clearObserver();
-    host.innerHTML = "";
-
-    const items = CFG[currentViewId] || [];
-    const existing = items
-      .map((it) => {
-        const el = document.getElementById(it.id);
-        return el ? { ...it, el } : null;
-      })
-      .filter(Boolean);
-
-    if (!existing.length) {
-      host.classList.add("hidden");
-      return;
-    }
-
-    existing.forEach((it) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "page-quicknav-btn";
-      btn.setAttribute("data-target", it.id);
-      btn.setAttribute("data-label", it.label);
-      btn.setAttribute("data-active", "false");
-      btn.setAttribute("aria-label", it.label);
-      btn.addEventListener("click", () => {
-        try {
-          it.el.scrollIntoView({ behavior: "smooth", block: "start" });
-          setActive(it.id);
-        } catch {
-          // ignore
-        }
-      });
-      host.appendChild(btn);
-    });
-
-    host.classList.remove("hidden");
-    setActive(existing[0].id);
-
-    // 현재 섹션 하이라이트(스크롤을 덜 헤매게)
-    try {
-      io = new IntersectionObserver(
-        (entries) => {
-          const vis = entries
-            .filter((e) => e.isIntersecting)
-            .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0))[0];
-          const id = vis?.target?.id;
-          if (id) setActive(id);
-        },
-        { root: null, threshold: [0.25, 0.35, 0.5, 0.65] }
-      );
-      existing.forEach((it) => io.observe(it.el));
-    } catch {
-      // ignore
-    }
-  };
-
-  // 외부에서 호출할 수 있게 노출
-  window.__mountQuickNavFor = mountFor;
-}
 
 function showView(viewId) {
   if (viewId !== "view-map") {
     try {
       closeMapFpInfographicFullscreen();
-      closeMapFullscreen();
     } catch {
       // ignore
     }
@@ -3566,12 +3445,6 @@ function showView(viewId) {
   document.querySelectorAll(".view-panel").forEach((el) => {
     el.classList.toggle("hidden", el.id !== viewId);
   });
-
-  try {
-    window.__mountQuickNavFor?.(viewId);
-  } catch {
-    // ignore
-  }
 
   const hdrMap = {
     "view-home": "hdr-tab-home",
@@ -3782,8 +3655,6 @@ function initFootprintsEmbedZoom() {
   const btnIn = document.getElementById("fp-zoom-in");
   const btnOut = document.getElementById("fp-zoom-out");
   const btnReset = document.getElementById("fp-zoom-reset");
-  const btnOutFab = document.getElementById("fp-zoom-out-fab");
-  const btnResetFab = document.getElementById("fp-zoom-reset-fab");
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -3823,11 +3694,6 @@ function initFootprintsEmbedZoom() {
     stage.style.cursor = st.scale > 1 ? "grab" : "default";
     // 핀치 줌(모바일) + 드래그 이동을 JS에서 처리하므로 항상 제스처를 직접 받는다.
     stage.style.touchAction = "none";
-    try {
-      stage.setAttribute("data-zoomed", st.scale > DEFAULT + 0.02 ? "1" : "0");
-    } catch {
-      // ignore
-    }
   };
 
   const reset = () => {
@@ -3873,18 +3739,7 @@ function initFootprintsEmbedZoom() {
     if (st.scale <= DEFAULT + 0.001) reset();
   });
 
-  btnOutFab?.addEventListener("click", (e) => {
-    e.preventDefault();
-    zoomTo(st.scale / 1.22, stage.clientWidth * 0.5, stage.clientHeight * 0.5);
-    if (st.scale <= DEFAULT + 0.001) reset();
-  });
-
   btnReset?.addEventListener("click", (e) => {
-    e.preventDefault();
-    reset();
-  });
-
-  btnResetFab?.addEventListener("click", (e) => {
     e.preventDefault();
     reset();
   });
@@ -4039,7 +3894,6 @@ function initMapFpInfographicFullscreen() {
 
   const closeModal = () => {
     detachResize();
-    setAnyModalOpen(false);
     if (!placeholder) {
       modal.classList.add("hidden");
       modal.setAttribute("aria-hidden", "true");
@@ -4078,7 +3932,6 @@ function initMapFpInfographicFullscreen() {
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     openBtn.setAttribute("aria-expanded", "true");
-    setAnyModalOpen(true);
     reflowStage();
   };
 
@@ -4139,7 +3992,6 @@ function initMapFullscreen() {
 
   const closeModal = () => {
     detachResize();
-    setAnyModalOpen(false);
     if (!placeholder) {
       modal.classList.add("hidden");
       modal.setAttribute("aria-hidden", "true");
@@ -4159,8 +4011,6 @@ function initMapFullscreen() {
     openBtn.setAttribute("aria-expanded", "false");
   };
 
-  closeMapFullscreen = closeModal;
-
   const openModal = () => {
     if (placeholder) return;
     const parent = stage.parentNode;
@@ -4177,7 +4027,6 @@ function initMapFullscreen() {
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     openBtn.setAttribute("aria-expanded", "true");
-    setAnyModalOpen(true);
   };
 
   openBtn.addEventListener("click", (e) => {
@@ -4481,7 +4330,6 @@ function initStaticMapInlineZoom() {
   const host = document.getElementById("map-leaflet");
   const img = document.getElementById("map-static-inline-img");
   const zoomInner = document.getElementById("map-static-zoom-inner");
-  const iframe = document.getElementById("map-mymaps-embed");
   const canvas = document.getElementById("map-static-inline-canvas");
   const btnIn = document.getElementById("map-static-zoom-in");
   const btnOut = document.getElementById("map-static-zoom-out");
@@ -4683,15 +4531,6 @@ function initStaticMapInlineZoom() {
     host.style.cursor = scale > 1 ? "grab" : "default";
     // 줌 상태에서는 스크롤/브라우저 제스처 대신 드래그 이동이 우선되도록
     host.style.touchAction = scale > 1 ? "none" : "pan-x pan-y";
-
-    // 구글 iframe UI(+/- 등)를 제거하기 위해, 줌 조작은 정적 이미지로 전환해서 처리한다.
-    try {
-      const useStatic = scale > 1.001;
-      if (zoomInner) zoomInner.classList.toggle("hidden", !useStatic);
-      if (iframe) iframe.classList.toggle("hidden", useStatic);
-    } catch {
-      // ignore
-    }
   }
 
   function reset() {
@@ -10184,7 +10023,6 @@ initTreeControls();
 initPersonDetailActions();
 initHomeActions();
 initHeaderTabs();
-initPageQuickNav();
 initMorePageChrome();
 initMoreExpanders();
 initTreeZoomHosts();
