@@ -445,6 +445,7 @@
       <!-- 선조의 발자취 (지도) -->
       <div id="view-map" class="view-panel hidden -mt-1 flex flex-col pb-10">
         <div
+          id="map-stage"
           class="relative w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
           style="aspect-ratio: 4 / 3; max-height: min(52vh, 380px)"
         >
@@ -479,6 +480,17 @@
               />
             </div>
           </div>
+          <button
+            type="button"
+            id="map-fullscreen-open"
+            class="map-fullscreen-open absolute right-3 top-3 z-[1000] rounded-lg border border-stone-200 bg-white/95 px-2.5 py-1.5 text-xs font-medium text-stone-700 shadow-sm hover:bg-stone-50"
+            aria-expanded="false"
+            aria-haspopup="dialog"
+            aria-controls="map-fullscreen"
+            title="지도 전체화면"
+          >
+            전체화면
+          </button>
           <button
             type="button"
             id="map-fit-btn"
@@ -733,6 +745,24 @@
           </button>
         </div>
         <div id="map-fp-fullscreen-body" class="more-fullscreen-body map-fp-fullscreen-body"></div>
+      </div>
+    </div>
+
+    <!-- 발자취 전용: 상단 구글 지도(#map-stage) 전체화면 -->
+    <div id="map-fullscreen" class="map-fp-fullscreen more-fullscreen hidden" aria-hidden="true">
+      <div
+        class="more-fullscreen-panel map-fp-fullscreen-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="map-fullscreen-title"
+      >
+        <div class="more-fullscreen-head">
+          <div id="map-fullscreen-title" class="more-fullscreen-title">선조의 발자취 지도</div>
+          <button type="button" id="map-fullscreen-close" class="more-fullscreen-close" aria-label="전체화면 닫기">
+            <span class="material-symbols-outlined" aria-hidden="true">close_fullscreen</span>
+          </button>
+        </div>
+        <div id="map-fullscreen-body" class="more-fullscreen-body map-fullscreen-body"></div>
       </div>
     </div>
 
