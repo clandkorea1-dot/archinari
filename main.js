@@ -3961,6 +3961,7 @@ function initMapFullscreen() {
   const modalBody = document.getElementById("map-fullscreen-body");
   const closeBtn = document.getElementById("map-fullscreen-close");
   const openBtn = document.getElementById("map-fullscreen-open");
+  const inlineCloseBtn = document.getElementById("map-fullscreen-close-inline");
   const stage = document.getElementById("map-stage");
   if (!modal || !modalBody || !closeBtn || !openBtn || !stage) return;
 
@@ -3996,6 +3997,11 @@ function initMapFullscreen() {
       modal.classList.add("hidden");
       modal.setAttribute("aria-hidden", "true");
       openBtn.setAttribute("aria-expanded", "false");
+      try {
+        stage.setAttribute("data-fullscreen-open", "0");
+      } catch {
+        // ignore
+      }
       return;
     }
     try {
@@ -4009,6 +4015,11 @@ function initMapFullscreen() {
     modal.classList.add("hidden");
     modal.setAttribute("aria-hidden", "true");
     openBtn.setAttribute("aria-expanded", "false");
+    try {
+      stage.setAttribute("data-fullscreen-open", "0");
+    } catch {
+      // ignore
+    }
   };
 
   const openModal = () => {
@@ -4027,6 +4038,11 @@ function initMapFullscreen() {
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     openBtn.setAttribute("aria-expanded", "true");
+    try {
+      stage.setAttribute("data-fullscreen-open", "1");
+    } catch {
+      // ignore
+    }
   };
 
   openBtn.addEventListener("click", (e) => {
@@ -4035,6 +4051,11 @@ function initMapFullscreen() {
   });
 
   closeBtn.addEventListener("click", () => {
+    closeModal();
+  });
+  inlineCloseBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     closeModal();
   });
 
@@ -5484,17 +5505,34 @@ function attachTreeZoomState(svgEl, zoom, initialTransform) {
     initial: initialTransform,
     sel: d3.select(svgEl),
   };
-  // 모바일 UX: 기본(배율 1)에서는 세로 스크롤, 확대 시에는 트리 드래그(팬) 우선
+  // 모바일 UX(중요): 한 손가락 스와이프는 "페이지 스크롤"이 우선이어야 한다.
+  // - D3 zoom은 기본적으로 터치 드래그를 가로채 preventDefault()가 걸려 스크롤이 막힐 수 있다.
+  // - 그래서 터치(손가락) 입력은 "두 손가락(핀치/팬)"일 때만 줌을 허용한다.
+  // - 확대/축소는 버튼(UI)로도 가능하도록 유지한다.
   try {
     const host = svgEl.closest?.(".tree-zoom-host");
     if (host) {
       const base = host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : "pan-y";
       host.style.touchAction = base;
-      zoom.on("zoom.touchAction", (event) => {
-        const k = Number(event?.transform?.k || 1);
-        host.style.touchAction = k > 1.01 ? "none" : base;
-      });
     }
+  } catch {
+    // ignore
+  }
+
+  // (핵심) 터치 1개는 스크롤로 넘기기: 줌/팬 이벤트를 받지 않는다.
+  try {
+    zoom.filter((event) => {
+      const t = String(event?.type || "");
+      if (t.startsWith("touch")) {
+        const touches = event?.touches;
+        const n = touches && typeof touches.length === "number" ? touches.length : 0;
+        return n >= 2; // 두 손가락일 때만
+      }
+      // wheel(마우스 휠)은 허용
+      if (t === "wheel") return true;
+      // 기본 필터(대략 d3 기본값과 동일): ctrlKey 줌 차단, 우클릭/중클릭 차단
+      return !event?.ctrlKey && !event?.button;
+    });
   } catch {
     // ignore
   }

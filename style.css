@@ -184,6 +184,19 @@
   display: none !important;
 }
 
+/* 지도 전체화면: 열림 시 버튼 자리에서 "닫기"로 전환 */
+#map-fullscreen-close-inline {
+  display: none;
+}
+#map-stage[data-fullscreen-open="1"] #map-fullscreen-open {
+  display: none !important;
+}
+#map-stage[data-fullscreen-open="1"] #map-fullscreen-close-inline {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
 .map-fullscreen-body.more-fullscreen-body {
   padding: 0;
   display: flex;
