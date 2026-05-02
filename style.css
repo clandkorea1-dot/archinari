@@ -155,15 +155,20 @@
   border-top: 1px dashed rgba(120, 113, 108, 0.25);
 }
 
-/* 대동보(세로 SVG): 고정 비율 박스 대신 가로 100%·세로는 내용 높이 — 잘림 없이 스크롤, 상단부터 */
+/* 대동보(세로 SVG): 렌더 박스를 넉넉히 길게(상단이 한 화면에 더 많이 보이도록) */
 #view-map #fp2-embed-stage.fp-embed-stage--gen11 {
   aspect-ratio: auto;
-  max-height: min(72vh, 880px);
+  max-height: min(92vh, 1280px);
+  max-height: min(92dvh, 1280px);
+  min-height: min(48vh, 420px);
+  min-height: min(48dvh, 420px);
   overflow-x: hidden;
   overflow-y: auto;
   align-items: flex-start;
   justify-content: flex-start;
   -webkit-overflow-scrolling: touch;
+  scroll-padding-top: 0;
+  overscroll-behavior: contain;
 }
 
 #view-map #fp2-embed-asset {
@@ -183,7 +188,7 @@
 .fp-embed-stage-placeholder--gen11 {
   width: 100%;
   min-height: 160px;
-  max-height: min(72vh, 880px);
+  max-height: min(92dvh, 1280px);
   background: #f3efe4;
 }
 
@@ -225,6 +230,11 @@
 
 /* (요청) 발자취 하단 인포박스의 ＋/－/원위치 아이콘 숨김 */
 #view-map .fp-embed-controls {
+  display: none !important;
+}
+
+/* 전체화면: 스테이지가 #view-map 밖으로 옮겨지므로 별도로 숨김(핀치·휠은 그대로) */
+.map-fp-fullscreen-body .fp-embed-controls {
   display: none !important;
 }
 

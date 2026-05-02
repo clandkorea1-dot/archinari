@@ -175,6 +175,18 @@ async function ensureFpEmbedAssetLoaded(assetHostId) {
           // ignore
         }
         initFootprintsEmbedZoomForAssetHost(assetHostId);
+        if (assetHostId === "fp2-embed-asset") {
+          const stg = document.getElementById("fp2-embed-stage");
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              try {
+                if (stg) stg.scrollTop = 0;
+              } catch {
+                // ignore
+              }
+            });
+          });
+        }
       })().catch((e) => {
         console.warn(e);
         fpEmbedLoadPromises.delete(assetHostId);
