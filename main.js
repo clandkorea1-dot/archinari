@@ -166,9 +166,12 @@ function renderGen11InteractiveChain() {
   if (!section || !svgEl || typeof d3 === "undefined") return;
 
   const rect = svgEl.getBoundingClientRect();
-  const w = Math.max(280, Math.floor(rect.width || 0));
-  const h = Math.max(220, Math.floor(rect.height || 0));
-  const sizeKey = `${w}x${h}`;
+  const rw = Math.floor(rect.width || 0);
+  const rh = Math.floor(rect.height || 0);
+  const w = Math.max(280, rw);
+  const h = Math.max(220, rh);
+  /* 캔버스 CSS 높이 변경 시에도 재레이아웃되도록 실제 픽셀 크기 포함 */
+  const sizeKey = `${w}x${h}@${rw}x${rh}`;
   if (sizeKey === gen11ChainLastSizeKey && gen11ChainSim) return;
   gen11ChainLastSizeKey = sizeKey;
 
@@ -177,7 +180,8 @@ function renderGen11InteractiveChain() {
     "예안":
       "예안파(평장사공파)는 춘의 입향한 이후 증손자 을방이 듬버리, 다른 현손자 효우가 태곡으로 이거하였습니다. 을방의 후손인 우리 선조는 영주 지천, 상운 운계로 분가하였고 운계에서는 봉화 황전으로 이거합니다. 자세한 분파 경로가 위에 표시되었습니다.",
     "소수박물관": "문중 소장 기증 유물",
-    "반남박씨": "반남박씨: 관련 인물/혼인/기록 등 간단 요약.",
+    "반남박씨":
+      "소고 박승임의 손자 삼락당 박종무의 여 =19세 일원",
     "김결": "김결: 관련 기록 요약(1~2줄).",
     "창원황씨": "김결에서 연결: 창원황씨 관련 요약(1~2줄).",
     "예안 향록": ["1572-1717년 작성한 예안향록에 유향소를 운영하던 재지 사족으로 기록.", "약(21), 지석(18)"].join(
