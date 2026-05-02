@@ -846,13 +846,70 @@ function readNodeGenLike(obj) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** 시트 성별 필드 — 여성이면 true (녹색 강조에 사용) */
+/** genRange·검색 등 행 합칠 때 성별(E)·외손(I) 등 동일 의미 필드 */
+const SHEET_GENDER_OESON_KEYS = [
+  "성별",
+  "gender",
+  "sex",
+  "Sex",
+  "Gender",
+  "외손",
+  "외손자",
+  "외손녀",
+  "외손들",
+  "외손목록",
+];
+
+/** base에 비어 있는 키만 overlay로 채운다(base 우선). */
+function fillEmptyRowFieldsFromOverlay(base, overlay) {
+  if (!base || typeof base !== "object") return base;
+  if (!overlay || typeof overlay !== "object") return base;
+  const out = { ...base };
+  for (const k of SHEET_GENDER_OESON_KEYS) {
+    const cur = out[k];
+    const ovl = overlay[k];
+    const empty = cur == null || String(cur).trim() === "";
+    const full = ovl != null && String(ovl).trim() !== "";
+    if (empty && full) out[k] = ovl;
+  }
+  return out;
+}
+
+/**
+ * 32~36세 패널: genRange 행에 성별·외손이 빠져 있으면 `peopleByIdCache`(검색 상세 등)로 보강.
+ */
+function enrichGen32PeopleRowsWithIdCache(rows) {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  return rows.map((row, i) => {
+    const id = getClanMemberId(row, i);
+    if (!id) return row;
+    const cached = peopleByIdCache.get(String(id));
+    if (!cached) return row;
+    return fillEmptyRowFieldsFromOverlay(row, cached);
+  });
+}
+
+/** 보강된 행을 다시 캐시에 넣어 이후 선택·재렌더에서 동일 필드를 유지 */
+function rememberMergedGenderOesonInPeopleByIdCache(rows) {
+  if (!Array.isArray(rows)) return;
+  rows.forEach((row, i) => {
+    const id = getClanMemberId(row, i);
+    if (!id) return;
+    const key = String(id);
+    const prev = peopleByIdCache.get(key);
+    peopleByIdCache.set(key, fillEmptyRowFieldsFromOverlay({ ...row }, prev || {}));
+  });
+}
+
+/** 시트 성별 필드 — 여성이면 true (녹색 강조·32세 이후 하단 외손 규칙) */
 function readNodeGenderIsFemale(row) {
   if (!row || typeof row !== "object") return false;
   const raw = pickFirstString(row, ["성별", "gender", "sex", "Sex", "Gender"]);
-  const v = String(raw || "")
+  const v0 = String(raw || "")
     .trim()
-    .toLowerCase();
+    .replace(/^\uFEFF/, "")
+    .replace(/\u00A0/g, " ");
+  const v = v0.toLowerCase();
   if (!v) return false;
   if (/^(여|녀|여성|f|female|w|woman|2|女)$/.test(v)) return true;
   if (v.includes("여") && !v.includes("남")) return true;
@@ -931,7 +988,8 @@ function gen32ReachableRowIdsFromRoot(rowObjs, rootId) {
  * **범위:** 오직 가계도 「32세 이후」모드 **하단**「선택인물기준」가계도 렌더링에만 쓴다.
  * `paintGen32DetailEightKinHorizontal`에서만 호출 — 1–31세 트리·홈 8촌 트리·족보 카드 등 다른 화면에는 적용하지 않는다.
  *
- * people 시트 **성별** 열(일반적으로 E열)이 여성인 문중원만 대상. 세 번호는 하단 트리 구간(32~36)과 맞춘다.
+ * people 시트 **성별** 열(E열)이 여성인 문중원만 대상.
+ * 적용 세대: **32·33·34·35·36세**(32세 이상 36세 이하)만 — 하단 연표 `minGen`/`maxGen`과 동일.
  *
  * 여성이면 **외손** 열(일반적으로 I열, 키 `외손` 등)에 적힌 이름 중 첫 1명만 매칭·연결하고,
  * 시트 부친 기준 형제·그 후손은 제거한다.
@@ -942,7 +1000,8 @@ function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId)
   const oesonBlueFatherIds = new Set();
   const rootStr = String(rootId || "").trim();
   const toRemove = new Set();
-  /** 하단 32~36 연표와 동일 상한 — 이 구간 시트에 포함된 여성 모두 외손 첫 1인 규칙 대상 */
+  /** 하단 연표와 동일 — 32~36세 여성만 외손(I열) 첫 1인 규칙 대상 */
+  const OESON_RULE_MIN_GEN = 32;
   const OESON_RULE_MAX_GEN = 36;
 
   const getOesonList = (row) =>
@@ -959,7 +1018,7 @@ function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId)
 
   for (const F of females) {
     const gF = typeof F.gen === "number" ? F.gen : null;
-    if (gF == null || gF > OESON_RULE_MAX_GEN) continue;
+    if (gF == null || gF < OESON_RULE_MIN_GEN || gF > OESON_RULE_MAX_GEN) continue;
 
     const isFemaleByRow = readNodeGenderIsFemale(F.row);
     if (!isFemaleByRow) continue;
@@ -8052,8 +8111,9 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
  */
 function paintGen32DetailEightKinHorizontal(rootId, people, wrap, svgEl) {
   const ctxKey = "__gen32Det1120Ctx";
+  const peopleIn = enrichGen32PeopleRowsWithIdCache(Array.isArray(people) ? people : []);
   try {
-    svgEl[ctxKey] = { rootId: String(rootId || ""), people: Array.isArray(people) ? people : [] };
+    svgEl[ctxKey] = { rootId: String(rootId || ""), people: peopleIn };
   } catch {
     // ignore
   }
@@ -8076,7 +8136,7 @@ function paintGen32DetailEightKinHorizontal(rootId, people, wrap, svgEl) {
     return;
   }
 
-  const nodesRaw = annotatePeople(Array.isArray(people) ? people : []).map((it) => {
+  const nodesRaw = annotatePeople(peopleIn).map((it) => {
     const g = readNodeGenLike(it.row);
     const fid = pickFirstString(it.row, PARENT_ID_KEYS);
     return {
@@ -8180,7 +8240,7 @@ function paintGen32DetailEightKinHorizontal(rootId, people, wrap, svgEl) {
   const fatherNameFromPeople = (fid) => {
     const key = String(fid || "").trim();
     if (!key) return "";
-    const arr = Array.isArray(people) ? people : [];
+    const arr = Array.isArray(peopleIn) ? peopleIn : [];
     for (let i = 0; i < arr.length; i++) {
       const id = getClanMemberId(arr[i], i);
       if (String(id) === key) return String(pickFirstString(arr[i], NAME_KEYS) || "").trim();
@@ -8378,7 +8438,9 @@ async function paintGen32PlusDualPanels() {
     if (wide && wide.length) people = filterRowsByGenBand(wide, 32, 36);
   }
   if (!people || !people.length) people = filterRowsByGenBand(lastSearchRows, 32, 36);
-  lastGen32PanelPeople = Array.isArray(people) ? people : [];
+  const merged32 = enrichGen32PeopleRowsWithIdCache(Array.isArray(people) ? people : []);
+  rememberMergedGenderOesonInPeopleByIdCache(merged32);
+  lastGen32PanelPeople = merged32;
   const annotated = annotatePeople(lastGen32PanelPeople);
   const list32 = annotated
     .filter((it) => readNodeGenLike(it.row) === 32)
