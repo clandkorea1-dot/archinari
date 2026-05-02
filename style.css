@@ -2152,10 +2152,6 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   z-index: 62;
 }
 
-.map-fp2-fullscreen.more-fullscreen {
-  z-index: 63;
-}
-
 .map-fp-fullscreen-body.more-fullscreen-body {
   padding: 0;
   display: flex;
@@ -2199,29 +2195,6 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   min-height: 0;
   height: 100%;
   aspect-ratio: unset;
-}
-
-/* 전체화면 대동보: 높이 채우고 세로 스크롤(잘림 없음) */
-.map-fp-fullscreen-body #fp2-embed-stage.fp-embed-stage--gen11 {
-  max-height: none;
-  height: 100%;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  align-items: flex-start;
-  justify-content: flex-start;
-  -webkit-overflow-scrolling: touch;
-  touch-action: auto;
-}
-
-.map-fp-fullscreen-body #fp2-embed-asset {
-  pointer-events: auto;
-}
-
-.map-fp-fullscreen-body #fp2-embed-asset svg {
-  width: 100%;
-  height: auto !important;
-  max-height: none !important;
 }
 
 .more-fullscreen-panel {

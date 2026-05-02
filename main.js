@@ -3554,17 +3554,11 @@ form.addEventListener("submit", async (e) => {
 
 /** 발자취 인포그래픽 전체화면 모달 닫기(초기화 전·탭 전환 시에도 안전한 no-op) */
 let closeMapFpInfographicFullscreen = () => {};
-let closeMapFp2InfographicFullscreen = () => {};
 
 function showView(viewId) {
   if (viewId !== "view-map") {
     try {
       closeMapFpInfographicFullscreen();
-    } catch {
-      // ignore
-    }
-    try {
-      closeMapFp2InfographicFullscreen();
     } catch {
       // ignore
     }
@@ -4154,16 +4148,6 @@ function bindMapFpInfographicFullscreen(opts) {
       } catch {
         // ignore
       }
-      /* 대동보: 모달로 옮긴 직후 레이아웃이 잡힌 뒤 맨 위부터 보이게 */
-      if (stage.id === "fp2-embed-stage") {
-        requestAnimationFrame(() => {
-          try {
-            stage.scrollTop = 0;
-          } catch {
-            // ignore
-          }
-        });
-      }
     });
   };
 
@@ -4240,16 +4224,6 @@ function initMapFpInfographicFullscreen() {
       stageId: "fp-embed-stage",
       placeholderAttr: "data-map-fp-placeholder",
       placeholderClass: "fp-embed-stage-placeholder",
-    }) || (() => {});
-  closeMapFp2InfographicFullscreen =
-    bindMapFpInfographicFullscreen({
-      modalId: "map-fp2-fullscreen",
-      modalBodyId: "map-fp2-fullscreen-body",
-      closeBtnId: "map-fp2-fullscreen-close",
-      openBtnId: "map-fp2-fullscreen-open",
-      stageId: "fp2-embed-stage",
-      placeholderAttr: "data-map-fp2-placeholder",
-      placeholderClass: "fp-embed-stage-placeholder fp-embed-stage-placeholder--gen11",
     }) || (() => {});
 }
 
