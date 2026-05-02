@@ -5635,17 +5635,56 @@ async function updateAncestorsForSelected() {
   if (hint) hint.textContent = `직계 조상 ${out.length}명`;
 }
 
-/** 아천문중 히어로 영상: 시스템「움직임 줄이기」면 자동재생 안 함(포스터), 필요 시 재생 버튼만 표시 */
+/** 아천문중 히어로 영상: 자동재생·반복 없음 — 좌하단 버튼으로만 재생/정지 */
 function initAcheonHeroBannerVideo() {
   const v = document.querySelector("#view-more .more-bento-hero-banner-video");
-  if (!v || typeof window.matchMedia !== "function") return;
+  const btn = document.getElementById("more-hero-video-toggle");
+  if (!v) return;
 
-  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+  try {
+    v.loop = false;
+    v.removeAttribute("loop");
+  } catch {
+    // ignore
+  }
+  v.controls = false;
 
-  const sync = () => {
-    if (mq.matches) {
-      v.removeAttribute("autoplay");
-      v.controls = true;
+  const iconEl = btn?.querySelector?.(".more-hero-video-toggle-icon");
+  const textEl = btn?.querySelector?.(".more-hero-video-toggle-text");
+
+  const setUiPlaying = (playing) => {
+    if (!btn) return;
+    if (iconEl) iconEl.textContent = playing ? "pause" : "play_arrow";
+    if (textEl) textEl.textContent = playing ? "정지" : "재생";
+    btn.setAttribute("aria-label", playing ? "히어로 영상 일시정지" : "히어로 영상 재생");
+    btn.setAttribute("aria-pressed", playing ? "true" : "false");
+  };
+
+  const toggle = () => {
+    if (v.paused) {
+      const p = v.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } else {
+      try {
+        v.pause();
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  btn?.addEventListener("click", () => toggle());
+  v.addEventListener("play", () => setUiPlaying(true));
+  v.addEventListener("pause", () => setUiPlaying(false));
+  v.addEventListener("ended", () => setUiPlaying(false));
+
+  if (typeof window.matchMedia === "function") {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onReduce = () => {
+      if (!mq.matches) {
+        v.preload = "metadata";
+        return;
+      }
       v.preload = "none";
       try {
         v.pause();
@@ -5653,23 +5692,14 @@ function initAcheonHeroBannerVideo() {
       } catch {
         // ignore
       }
-    } else {
-      v.controls = false;
-      v.preload = "metadata";
-      v.setAttribute("autoplay", "");
-      try {
-        v.setAttribute("muted", "");
-      } catch {
-        // ignore
-      }
-      const p = v.play();
-      if (p && typeof p.catch === "function") p.catch(() => {});
-    }
-  };
+      setUiPlaying(false);
+    };
+    onReduce();
+    if (typeof mq.addEventListener === "function") mq.addEventListener("change", onReduce);
+    else if (typeof mq.addListener === "function") mq.addListener(onReduce);
+  }
 
-  sync();
-  if (typeof mq.addEventListener === "function") mq.addEventListener("change", sync);
-  else if (typeof mq.addListener === "function") mq.addListener(sync);
+  setUiPlaying(false);
 }
 
 function initHomeActions() {

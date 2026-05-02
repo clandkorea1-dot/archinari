@@ -1982,11 +1982,42 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
 
 /* 아천문중: 상단 풍경 배너(가로형 이미지 — 박스 너비에 맞춤, 높이는 cover로 크롭) */
 #view-more .more-bento-hero-banner {
+  position: relative;
   width: 100%;
   /* 이미지 전체가 보이도록: 고정 높이로 크롭하지 않고, 이미지 비율대로 높이를 늘림 */
   height: auto;
   border-bottom: 1px solid var(--bento-ink);
   background: #c8dbe8;
+}
+
+/* 히어로 영상: 좌하단 재생/정지(자동재생 없음 — 사용자 버튼만) */
+#view-more .more-hero-video-toggle {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(26, 46, 46, 0.35);
+  background: rgba(250, 248, 243, 0.92);
+  color: var(--bento-ink);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#view-more .more-hero-video-toggle:hover {
+  background: rgba(255, 255, 255, 0.98);
+}
+
+#view-more .more-hero-video-toggle .more-hero-video-toggle-icon {
+  font-size: 22px;
+  line-height: 1;
 }
 
 #view-more .more-bento-hero-banner-img {

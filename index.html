@@ -622,7 +622,6 @@
               poster="assets/hero-acheon.jpg?v=1"
               playsinline
               muted
-              loop
               preload="metadata"
               width="1200"
               height="400"
@@ -630,6 +629,16 @@
             >
               <source src="assets/hero-acheon.mp4?v=1" type="video/mp4" />
             </video>
+            <button
+              type="button"
+              id="more-hero-video-toggle"
+              class="more-hero-video-toggle"
+              aria-label="히어로 영상 재생"
+              aria-pressed="false"
+            >
+              <span class="material-symbols-outlined more-hero-video-toggle-icon" aria-hidden="true">play_arrow</span>
+              <span class="more-hero-video-toggle-text">재생</span>
+            </button>
           </div>
 
           <section id="more-charter" class="more-bento-cell" aria-labelledby="more-charter-title">
