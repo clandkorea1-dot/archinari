@@ -47,6 +47,9 @@
   - 광룡
   - 광혁
 
+## 발자취 하단 임베드 (SVG)
+- 두 박스를 혼동하지 말 것: 타임라인 `fp-embed-*`(viewBox 줌·전체화면 가능) vs 대동보 `fp2-embed-*`(고정 viewBox·스테이지 스크롤만, 대동보 전체화면 없음). 상세는 Cursor 규칙 `footprints-embed-fp-fp2-always.mdc`.
+
 ## Mapping rules
 - Use the page name '선조의 발자취'
 - Show map markers only where location data exists.

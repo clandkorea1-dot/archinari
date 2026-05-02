@@ -1,0 +1,31 @@
+---
+description: 발자취 탭 하단 SVG 임베드(fp 인포 vs 대동보 fp2) 분기·금지 사항
+alwaysApply: true
+---
+
+# 발자취 하단 임베드 (fp / fp2 분리)
+
+## 두 종류 — 경로를 섞지 말 것
+
+- **`fp-embed-asset` + `#fp-embed-stage`**: 타임라인 인포그래픽.  
+  - JS: `initFootprintsEmbedZoom` (viewBox 줌·휠·핀치·드래그).  
+  - 전체화면: `#map-fp-fullscreen` / `bindMapFpInfographicFullscreen` (첫 번째만).
+
+- **`fp2-embed-asset` + `#fp2-embed-stage`**: 대동보(세로 긴 SVG, gen11).  
+  - JS: **`initFootprintsFp2EmbedNativeScroll`만** — `readSvgBaseBox`로 전체 문서 `viewBox`를 한 번 고정하고 유지, **viewBox를 제스처로 바꾸지 않음**.  
+  - 스크롤: `#fp2-embed-stage`의 `overflow`(CSS `fp-embed-stage--gen11`).  
+  - 세밀 확대: 브라우저·OS 페이지 줌에 맡김.
+
+## fp2에서 하면 안 되는 것
+
+- fp2에 `initFootprintsEmbedZoom`을 다시 연결 (viewBox 조작 + 스테이지 스크롤 충돌).  
+- 대동보용 **전체화면 모달** 복구 — 제품 결정으로 제거됨(`map-fp2-*` 제거 상태 유지).
+
+## 코드 진입점
+
+- `initFootprintsEmbedZoomForAssetHost(assetHostId)` — `fp2-embed-asset`이면 네이티브 스크롤 경로만.  
+- 로드: `ensureFpEmbedAssetLoaded`, HTML `data-fp-embed-src` (`assets/footprints-gen11.svg` 등).
+
+## 다른 규칙과의 관계
+
+- 가계도 트리 격리: `tree-rendering-isolation-always.mdc`. 임베드 SVG는 **발자취 전용**이며 트리 SVG·줌 상태와 공유하지 않음.
