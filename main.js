@@ -127,9 +127,13 @@ function ensureMapTabAuxInits() {
 }
 
 function initFootprintsEmbedZoomForAssetHost(assetHostId) {
+  /* 대동보: viewBox 줌·핀치는 스크롤과 충돌 → 전용(스크롤+고정 viewBox) */
+  if (assetHostId === "fp2-embed-asset") {
+    initFootprintsFp2EmbedNativeScroll("fp2-embed-stage", "fp2-embed-asset");
+    return;
+  }
   const map = {
     "fp-embed-asset": { stageId: "fp-embed-stage", zoomPrefix: "" },
-    "fp2-embed-asset": { stageId: "fp2-embed-stage", zoomPrefix: "fp2-" },
   };
   const m = map[assetHostId];
   if (!m) return;
@@ -3831,7 +3835,57 @@ function fpZoomControlIds(zoomPrefix) {
   return { in: `${zoomPrefix}zoom-in`, out: `${zoomPrefix}zoom-out`, reset: `${zoomPrefix}zoom-reset` };
 }
 
-/** @param {string} zoomPrefix 첫 박스는 "" , 두 번째(11세)는 "fp2-" */
+/**
+ * 대동보(fp2): 세로 롱 도면은 스테이지 `overflow` 스크롤로 본다.
+ * viewBox를 매 프레임 바꾸면(기존 줌 로직) 화면과 스크롤이 어긋나 "바탕만 움직임".
+ * viewBox는 문서 전체로 고정하고 확대/이동은 브라우저(핀치로 페이지 확대 등)에 맡긴다.
+ */
+function initFootprintsFp2EmbedNativeScroll(stageId, assetHostId) {
+  const stage = document.getElementById(stageId);
+  const assetHost = document.getElementById(assetHostId);
+  if (!stage || !assetHost) return;
+  if (stage.dataset.fp2ScrollMode === "v2") return;
+
+  const targetSvg = assetHost.querySelector("svg");
+  if (!(targetSvg instanceof SVGSVGElement)) return;
+
+  const box = readSvgBaseBox(targetSvg);
+  const lockViewBox = () => {
+    try {
+      targetSvg.setAttribute("viewBox", `${box.x} ${box.y} ${box.w} ${box.h}`);
+      targetSvg.setAttribute("preserveAspectRatio", "xMidYMin meet");
+      targetSvg.style.textRendering = "geometricPrecision";
+      targetSvg.style.shapeRendering = "geometricPrecision";
+    } catch {
+      // ignore
+    }
+  };
+
+  lockViewBox();
+  try {
+    stage.style.touchAction = "auto";
+    stage.style.cursor = "default";
+  } catch {
+    // ignore
+  }
+
+  try {
+    stage.__fpEmbedReflow = () => {
+      lockViewBox();
+    };
+  } catch {
+    // ignore
+  }
+
+  try {
+    stage.dataset.fpZoomBound = "1";
+    stage.dataset.fp2ScrollMode = "v2";
+  } catch {
+    // ignore
+  }
+}
+
+/** 인포그래픽(타임라인)만 viewBox 줌 — 대동보는 initFootprintsFp2EmbedNativeScroll */
 function initFootprintsEmbedZoom(stageId, assetHostId, zoomPrefix = "") {
   const stage = document.getElementById(stageId);
   const assetHost = document.getElementById(assetHostId);
@@ -3847,8 +3901,7 @@ function initFootprintsEmbedZoom(stageId, assetHostId, zoomPrefix = "") {
 
   const MIN = 1;
   const MAX = 3.2;
-  /* 대동보(fp2) 세로 도면: 첫 화면은 전체 viewBox(가로=박스 폭에 맞춤). 타임라인 인포는 기존 살짝 확대. */
-  const DEFAULT = zoomPrefix === "fp2-" ? 1 : 1.25;
+  const DEFAULT = 1.25;
   const st = { scale: DEFAULT, x: 0, y: 0 };
 
   const targetSvg = assetHost.querySelector("svg");
@@ -3890,10 +3943,7 @@ function initFootprintsEmbedZoom(stageId, assetHostId, zoomPrefix = "") {
     stage.style.cursor = zoomedPastDefault ? "grab" : "default";
     // 기본 배율: 세로 스크롤을 페이지에 넘김(pan-y). 확대 후 또는 핀치 중에는 제스처 유지(none).
     if (pts.size >= 2) stage.style.touchAction = "none";
-    else if (zoomPrefix === "fp2-" && !zoomedPastDefault) {
-      /* 대동보: 스테이지 내부 세로 스크롤 — pan-y(JS 기본)보다 auto가 모바일에서 안정적 */
-      stage.style.touchAction = "auto";
-    } else stage.style.touchAction = zoomedPastDefault ? "none" : "pan-y";
+    else stage.style.touchAction = zoomedPastDefault ? "none" : "pan-y";
   };
 
   const reset = () => {
@@ -3901,16 +3951,8 @@ function initFootprintsEmbedZoom(stageId, assetHostId, zoomPrefix = "") {
     const viewW = base.w / st.scale;
     const viewH = base.h / st.scale;
     st.x = (base.w - viewW) / 2;
-    /* 대동보: 잘라내지 않고 스크롤로 보므로 뷰는 항상 문서 위쪽(y=0) 기준 */
-    st.y = zoomPrefix === "fp2-" ? 0 : (base.h - viewH) / 2;
+    st.y = (base.h - viewH) / 2;
     apply();
-    if (zoomPrefix === "fp2-") {
-      try {
-        stage.scrollTop = 0;
-      } catch {
-        // ignore
-      }
-    }
   };
 
   const zoomTo = (nextScale, anchorX, anchorY) => {
@@ -3956,9 +3998,6 @@ function initFootprintsEmbedZoom(stageId, assetHostId, zoomPrefix = "") {
   stage.addEventListener(
     "wheel",
     (e) => {
-      if (zoomPrefix === "fp2-" && st.scale <= DEFAULT + 0.001 && !e.ctrlKey && !e.metaKey) {
-        return;
-      }
       e.preventDefault();
       const r = stage.getBoundingClientRect();
       const ax = e.clientX - r.left;
