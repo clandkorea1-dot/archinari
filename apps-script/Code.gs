@@ -8,6 +8,9 @@
  * - doPost voteSubmit: voteResponse 시트에 한 행 추가
  *
  * 배포: 스크립트 편집기 → 배포 → 웹 앱. URL은 main.js 의 API_BASE 와 동일해야 합니다.
+ *
+ * (중요) 가계도 32~36세 하단「외손」규칙은 people 시트 **성별(E)·외손(I)** 열을 내려줘야 한다.
+ * 아래가 빠진 구버전이면 genRange/search/getDetail 응답에 성별·외손이 없음 → 반드시 이 백업본 전체를 붙여 넣고 새 버전 배포.
  */
 
 function doGet(e) {

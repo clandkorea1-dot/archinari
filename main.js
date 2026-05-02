@@ -991,9 +991,10 @@ function gen32ReachableRowIdsFromRoot(rowObjs, rootId) {
  * people 시트 **성별** 열(E열)이 여성인 문중원만 대상.
  * 적용 세대: **32·33·34·35·36세**(32세 이상 36세 이하)만 — 하단 연표 `minGen`/`maxGen`과 동일.
  *
- * 여성이면 **외손** 열(일반적으로 I열, 키 `외손` 등)에 적힌 이름 중 첫 1명만 매칭·연결하고,
- * 시트 부친 기준 형제·그 후손은 제거한다.
- * 매칭된 모–외손 구간은 `oesonBlueFatherIds`로 파란 연결선을 그린다.
+ * 여성이면 **외손** 열(일반적으로 I열, 키 `외손` 등)에 적힌 이름 중 첫 1명만 매칭·연결한다.
+ * `people`에 문중원ID가 없는 외손(이름만 기록)은 `__oeson_{모ID}` 가상 노드로 잡는다.
+ * (시트 부친ID로 잡힌) 실제 자녀가 있으면 그중 외손 1인만 남기고 형제·그 후손은 제거한다.
+ * 모–외손 구간은 `oesonBlueFatherIds`로 파란 연결선을 그린다.
  */
 function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId) {
   const syntheticParentByChildId = new Map();
@@ -1041,7 +1042,28 @@ function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId)
         if (ga !== gb) return ga - gb;
         return compareClanMemberIds(a.id, b.id);
       });
-    if (!candidates.length) continue;
+    if (!candidates.length) {
+      /** `people`에 없는 외손(이름만) → 가상 자녀 1명으로 모와 파란 연결 */
+      const synId = `__oeson_${fid}`;
+      if (keepMap.has(synId)) continue;
+      const synGen =
+        typeof F.gen === "number"
+          ? F.gen >= OESON_RULE_MAX_GEN
+            ? OESON_RULE_MAX_GEN
+            : F.gen + 1
+          : null;
+      const displayName = String(wantRaw).trim();
+      keepMap.set(synId, {
+        id: synId,
+        name: displayName,
+        gen: synGen,
+        fatherId: "",
+        row: { 이름: displayName, 성별: "", 외손: "" },
+      });
+      syntheticParentByChildId.set(synId, fid);
+      oesonBlueFatherIds.add(fid);
+      continue;
+    }
 
     const chosen = candidates[0];
     const chosenId = String(chosen.id);
