@@ -117,8 +117,7 @@ function scheduleIdle(task, timeoutMs = 400) {
 /** 발자취 탭 전용: 정적 지도 줌·타임라인 편집 — 홈 로드 시에는 실행하지 않음 */
 let mapTabAuxInitsDone = false;
 /** 하단 인포그래픽 SVG는 외부 파일로 두고 발자취 탭에서만 fetch */
-let fpEmbedZoomInited = false;
-let fpEmbedLoadPromise = null;
+const fpEmbedLoadPromises = new Map(); /* assetHostId -> Promise */
 
 function ensureMapTabAuxInits() {
   if (mapTabAuxInitsDone) return;
@@ -127,47 +126,61 @@ function ensureMapTabAuxInits() {
   initTimelineInlineEdits();
 }
 
-async function ensureFootprintsInfographicLoaded() {
-  const assetHost = document.getElementById("fp-embed-asset");
+function initFootprintsEmbedZoomForAssetHost(assetHostId) {
+  const map = {
+    "fp-embed-asset": { stageId: "fp-embed-stage", zoomPrefix: "" },
+    "fp2-embed-asset": { stageId: "fp2-embed-stage", zoomPrefix: "fp2-" },
+  };
+  const m = map[assetHostId];
+  if (!m) return;
+  initFootprintsEmbedZoom(m.stageId, assetHostId, m.zoomPrefix);
+}
+
+async function ensureFpEmbedAssetLoaded(assetHostId) {
+  const assetHost = document.getElementById(assetHostId);
   if (!assetHost) return;
   if (assetHost.querySelector("svg")) {
-    if (!fpEmbedZoomInited) {
-      initFootprintsEmbedZoom();
-      fpEmbedZoomInited = true;
-    }
+    initFootprintsEmbedZoomForAssetHost(assetHostId);
     return;
   }
   const src = assetHost.getAttribute("data-fp-embed-src");
   if (!src) return;
-  if (!fpEmbedLoadPromise) {
-    fpEmbedLoadPromise = (async () => {
-      const url = new URL(src, location.href);
-      const r = await fetch(url.href);
-      if (!r.ok) throw new Error(`fp-embed ${r.status}`);
-      const txt = await r.text();
-      assetHost.innerHTML = txt;
-      try {
-        const sv = assetHost.querySelector("svg");
-        if (sv && !sv.getAttribute("preserveAspectRatio")) {
-          sv.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  if (!fpEmbedLoadPromises.has(assetHostId)) {
+    fpEmbedLoadPromises.set(
+      assetHostId,
+      (async () => {
+        const url = new URL(src, location.href);
+        const r = await fetch(url.href);
+        if (!r.ok) throw new Error(`fp-embed ${r.status}`);
+        const txt = await r.text();
+        assetHost.innerHTML = txt;
+        try {
+          const sv = assetHost.querySelector("svg");
+          if (sv && !sv.getAttribute("preserveAspectRatio")) {
+            sv.setAttribute("preserveAspectRatio", "xMidYMid meet");
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
-      }
-      initFootprintsEmbedZoom();
-      fpEmbedZoomInited = true;
-    })().catch((e) => {
-      console.warn(e);
-      fpEmbedLoadPromise = null;
-      try {
-        assetHost.innerHTML =
-          '<p class="p-4 text-center text-[11px] text-stone-500">인포그래픽을 불러오지 못했습니다. 새로고침 후 발자취 탭을 다시 열어 주세요.</p>';
-      } catch {
-        // ignore
-      }
-    });
+        initFootprintsEmbedZoomForAssetHost(assetHostId);
+      })().catch((e) => {
+        console.warn(e);
+        fpEmbedLoadPromises.delete(assetHostId);
+        try {
+          assetHost.innerHTML =
+            '<p class="p-4 text-center text-[11px] text-stone-500">자료를 불러오지 못했습니다. 새로고침 후 발자취 탭을 다시 열어 주세요.</p>';
+        } catch {
+          // ignore
+        }
+      })
+    );
   }
-  await fpEmbedLoadPromise;
+  await fpEmbedLoadPromises.get(assetHostId);
+}
+
+async function ensureFootprintsInfographicLoaded() {
+  await ensureFpEmbedAssetLoaded("fp-embed-asset");
+  await ensureFpEmbedAssetLoaded("fp2-embed-asset");
 }
 
 /** 마지막 검색 결과 — 가계도 인물 목록에 사용 */
@@ -256,9 +269,8 @@ function renderGen11InteractiveChain() {
       "소고 박승임의 손자 삼락당 박종무의 여 =19세 일원",
     "김결": "김결: 관련 기록 요약(1~2줄).",
     "창원황씨": [
-      "퇴계학맥 구축에 주도적인 역할을 한 소고(박승임) 계열과 삼송당(남몽오) 계열,",
-      "안동권씨와 풍산김씨, 창원황씨의 가학.",
-      "이들과 혼맥으로 연결되어 있습니다.",
+      "퇴계학맥 구축에 주도적인 역할을 한 소고(박승임) 계열과 삼송당(남몽오) 계열, 안동권씨와 풍산김씨, 창원황씨의 가학.",
+      "대표적 영주 지식인 집단과 혼맥으로 연결되어 있습니다.",
     ].join("\n"),
     "예안 향록": ["1572-1717년 작성한 예안향록에 유향소를 운영하던 재지 사족으로 기록.", "약(21), 지석(18)"].join(
       "\n"
@@ -3514,11 +3526,24 @@ form.addEventListener("submit", async (e) => {
 
 /** 발자취 인포그래픽 전체화면 모달 닫기(초기화 전·탭 전환 시에도 안전한 no-op) */
 let closeMapFpInfographicFullscreen = () => {};
+let closeMapFp2InfographicFullscreen = () => {};
 
 function showView(viewId) {
   if (viewId !== "view-map") {
     try {
       closeMapFpInfographicFullscreen();
+    } catch {
+      // ignore
+    }
+    try {
+      closeMapFp2InfographicFullscreen();
+    } catch {
+      // ignore
+    }
+    try {
+      document.querySelectorAll("#hdr-submenu-map button.hdr-subbtn").forEach((b) => {
+        b.setAttribute("data-active", "false");
+      });
     } catch {
       // ignore
     }
@@ -3602,14 +3627,37 @@ function initHeaderTabs() {
 
     const scrollToId = btn.getAttribute("data-scroll-to");
     if (scrollToId) {
-      const el = document.getElementById(scrollToId);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      const mapWrap = document.getElementById("hdr-submenu-map");
       const moreWrap = document.getElementById("hdr-submenu-more");
-      if (moreWrap?.contains(btn)) {
-        moreWrap.querySelectorAll("button.hdr-subbtn").forEach((b) => {
-          b.setAttribute("data-active", b === btn ? "true" : "false");
+
+      const highlightSubRow = () => {
+        if (mapWrap?.contains(btn)) {
+          mapWrap.querySelectorAll("button.hdr-subbtn").forEach((b) => {
+            b.setAttribute("data-active", b === btn ? "true" : "false");
+          });
+        }
+        if (moreWrap?.contains(btn)) {
+          moreWrap.querySelectorAll("button.hdr-subbtn").forEach((b) => {
+            b.setAttribute("data-active", b === btn ? "true" : "false");
+          });
+        }
+      };
+
+      const doScroll = () => {
+        const el = document.getElementById(scrollToId);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        highlightSubRow();
+      };
+
+      if (mapWrap?.contains(btn)) {
+        showView("view-map");
+        requestAnimationFrame(() => {
+          requestAnimationFrame(doScroll);
         });
+        return;
       }
+
+      doScroll();
     }
   });
 }
@@ -3731,14 +3779,35 @@ function initTimelineInlineEdits() {
 }
 
 /* ---------- 발자취: 하단 자료(SVG) 확대/이동(전용) ---------- */
-function initFootprintsEmbedZoom() {
-  const stage = document.getElementById("fp-embed-stage");
-  const assetHost = document.getElementById("fp-embed-asset");
-  if (!stage || !assetHost) return;
+function readSvgBaseBox(svg) {
+  const vb = svg.getAttribute("viewBox");
+  if (vb) {
+    const p = vb.trim().split(/[\s,]+/).map(Number);
+    if (p.length >= 4 && p.every((n) => Number.isFinite(n))) {
+      return { x: p[0], y: p[1], w: p[2], h: p[3] };
+    }
+  }
+  const w = parseFloat(svg.getAttribute("width")) || 960;
+  const h = parseFloat(svg.getAttribute("height")) || 540;
+  return { x: 0, y: 0, w, h };
+}
 
-  const btnIn = document.getElementById("fp-zoom-in");
-  const btnOut = document.getElementById("fp-zoom-out");
-  const btnReset = document.getElementById("fp-zoom-reset");
+function fpZoomControlIds(zoomPrefix) {
+  if (!zoomPrefix) return { in: "fp-zoom-in", out: "fp-zoom-out", reset: "fp-zoom-reset" };
+  return { in: `${zoomPrefix}zoom-in`, out: `${zoomPrefix}zoom-out`, reset: `${zoomPrefix}zoom-reset` };
+}
+
+/** @param {string} zoomPrefix 첫 박스는 "" , 두 번째(11세)는 "fp2-" */
+function initFootprintsEmbedZoom(stageId, assetHostId, zoomPrefix = "") {
+  const stage = document.getElementById(stageId);
+  const assetHost = document.getElementById(assetHostId);
+  if (!stage || !assetHost) return;
+  if (stage.dataset.fpZoomBound === "1") return;
+
+  const zid = fpZoomControlIds(zoomPrefix);
+  const btnIn = document.getElementById(zid.in);
+  const btnOut = document.getElementById(zid.out);
+  const btnReset = document.getElementById(zid.reset);
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -3753,7 +3822,8 @@ function initFootprintsEmbedZoom() {
   targetSvg.style.textRendering = "geometricPrecision";
   targetSvg.style.shapeRendering = "geometricPrecision";
 
-  const base = { x: 0, y: 0, w: 960, h: 540 };
+  const box = readSvgBaseBox(targetSvg);
+  const base = { x: box.x, y: box.y, w: box.w, h: box.h };
 
   const unitPerPx = (viewW, viewH) => {
     const wpx = stage.clientWidth || 1;
@@ -3936,16 +4006,32 @@ function initFootprintsEmbedZoom() {
   } catch {
     // ignore
   }
+
+  try {
+    stage.dataset.fpZoomBound = "1";
+  } catch {
+    // ignore
+  }
 }
 
-/** 발자취: 하단 인포그래픽 박스(#fp-embed-stage)만 전체화면 — DOM 이동 후 복귀(아천문중과 동일 패턴) */
-function initMapFpInfographicFullscreen() {
-  const modal = document.getElementById("map-fp-fullscreen");
-  const modalBody = document.getElementById("map-fp-fullscreen-body");
-  const closeBtn = document.getElementById("map-fp-fullscreen-close");
-  const openBtn = document.getElementById("map-fp-fullscreen-open");
-  const stage = document.getElementById("fp-embed-stage");
-  if (!modal || !modalBody || !closeBtn || !openBtn || !stage) return;
+/** 발자취: 하단 인포그래픽 박스만 전체화면 — DOM 이동 후 복귀(아천문중과 동일 패턴) */
+function bindMapFpInfographicFullscreen(opts) {
+  const {
+    modalId,
+    modalBodyId,
+    closeBtnId,
+    openBtnId,
+    stageId,
+    placeholderAttr = "data-map-fp-placeholder",
+    placeholderClass = "fp-embed-stage-placeholder",
+  } = opts;
+
+  const modal = document.getElementById(modalId);
+  const modalBody = document.getElementById(modalBodyId);
+  const closeBtn = document.getElementById(closeBtnId);
+  const openBtn = document.getElementById(openBtnId);
+  const stage = document.getElementById(stageId);
+  if (!modal || !modalBody || !closeBtn || !openBtn || !stage) return null;
 
   let placeholder = null;
   let resizeBound = false;
@@ -4006,16 +4092,14 @@ function initMapFpInfographicFullscreen() {
     reflowStage();
   };
 
-  closeMapFpInfographicFullscreen = closeModal;
-
   const openModal = () => {
     if (placeholder) return;
     const parent = stage.parentNode;
     if (!parent) return;
 
     placeholder = document.createElement("div");
-    placeholder.className = "fp-embed-stage-placeholder";
-    placeholder.setAttribute("data-map-fp-placeholder", "");
+    placeholder.className = placeholderClass;
+    placeholder.setAttribute(placeholderAttr, "");
     parent.insertBefore(placeholder, stage);
     modalBody.appendChild(stage);
 
@@ -4045,17 +4129,41 @@ function initMapFpInfographicFullscreen() {
     if (modal.classList.contains("hidden")) return;
     closeModal();
   });
+
+  return closeModal;
+}
+
+function initMapFpInfographicFullscreen() {
+  closeMapFpInfographicFullscreen =
+    bindMapFpInfographicFullscreen({
+      modalId: "map-fp-fullscreen",
+      modalBodyId: "map-fp-fullscreen-body",
+      closeBtnId: "map-fp-fullscreen-close",
+      openBtnId: "map-fp-fullscreen-open",
+      stageId: "fp-embed-stage",
+      placeholderAttr: "data-map-fp-placeholder",
+      placeholderClass: "fp-embed-stage-placeholder",
+    }) || (() => {});
+  closeMapFp2InfographicFullscreen =
+    bindMapFpInfographicFullscreen({
+      modalId: "map-fp2-fullscreen",
+      modalBodyId: "map-fp2-fullscreen-body",
+      closeBtnId: "map-fp2-fullscreen-close",
+      openBtnId: "map-fp2-fullscreen-open",
+      stageId: "fp2-embed-stage",
+      placeholderAttr: "data-map-fp2-placeholder",
+      placeholderClass: "fp-embed-stage-placeholder fp-embed-stage-placeholder--gen11",
+    }) || (() => {});
 }
 
 /** 발자취: 상단 지도(#map-stage) 전체화면 — DOM 이동 후 복귀(인포그래픽과 동일 패턴) */
 function initMapFullscreen() {
   const modal = document.getElementById("map-fullscreen");
   const modalBody = document.getElementById("map-fullscreen-body");
-  const closeBtn = document.getElementById("map-fullscreen-close");
   const openBtn = document.getElementById("map-fullscreen-open");
   const inlineCloseBtn = document.getElementById("map-fullscreen-close-inline");
   const stage = document.getElementById("map-stage");
-  if (!modal || !modalBody || !closeBtn || !openBtn || !stage) return;
+  if (!modal || !modalBody || !openBtn || !stage) return;
 
   let placeholder = null;
   let resizeBound = false;
@@ -4142,9 +4250,6 @@ function initMapFullscreen() {
     openModal();
   });
 
-  closeBtn.addEventListener("click", () => {
-    closeModal();
-  });
   inlineCloseBtn?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();

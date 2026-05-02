@@ -155,6 +155,18 @@
   border-top: 1px dashed rgba(120, 113, 108, 0.25);
 }
 
+/* 11세 족보(세로 SVG 등): 인페이지 프레임 비율·높이 제한 — 깨짐 방지 */
+.fp-embed-stage--gen11 {
+  aspect-ratio: 9 / 16;
+  max-height: min(72vh, 880px);
+}
+
+.fp-embed-stage-placeholder--gen11 {
+  aspect-ratio: 9 / 16;
+  max-height: min(72vh, 880px);
+  width: 100%;
+}
+
 /* -------- 발자취: 하단 삽입 자료(SVG/IMG 공통) -------- */
 .fp-embed-stage {
   position: relative;
@@ -2099,11 +2111,44 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   z-index: 62;
 }
 
+.map-fp2-fullscreen.more-fullscreen {
+  z-index: 63;
+}
+
 .map-fp-fullscreen-body.more-fullscreen-body {
   padding: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
+}
+
+/* 발자취 인포그래픽 전체화면: 헤더 없음 — 인포 위 우측 상단 텍스트 닫기 */
+.map-fp-embed-fullscreen-close-btn {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  z-index: 70;
+  padding: 0.42rem 0.95rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(26, 46, 46, 0.22);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #122020;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.map-fp-embed-fullscreen-close-btn:hover {
+  background: #ffffff;
+  border-color: rgba(26, 46, 46, 0.32);
+}
+
+.map-fp-embed-fullscreen-close-btn:active {
+  transform: translateY(1px);
 }
 
 .map-fp-fullscreen-body .fp-embed-stage {
@@ -2111,6 +2156,11 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   min-height: 0;
   height: 100%;
   aspect-ratio: unset;
+}
+
+/* 전체화면에서는 11세 박스의 인페이지 max-height 제한 해제 */
+.map-fp-fullscreen-body .fp-embed-stage--gen11 {
+  max-height: none;
 }
 
 .more-fullscreen-panel {
