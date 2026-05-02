@@ -8097,8 +8097,8 @@ function renderGen32DetailPanel(rootId, people) {
 
   el.innerHTML = `
     <div class="tree-gen32-pedigree">
-      <div id="tree-gen32-1120-wrap" class="tree-zoom-host relative min-h-[400px] w-full overflow-x-auto overflow-y-hidden rounded-xl border border-stone-100 bg-stone-50/80">
-        <svg id="tree-gen32-detail-svg" class="h-full w-full touch-none" role="img" aria-label="하위 8촌형 가로 연표"></svg>
+      <div id="tree-gen32-1120-wrap" class="tree-zoom-host relative min-h-[400px] w-full overflow-x-auto overflow-y-auto rounded-xl border border-stone-100 bg-stone-50/80">
+        <svg id="tree-gen32-detail-svg" class="h-full w-full touch-manipulation" role="img" aria-label="하위 8촌형 가로 연표"></svg>
       </div>
     </div>`;
   const wrap1120 = document.getElementById("tree-gen32-1120-wrap");
