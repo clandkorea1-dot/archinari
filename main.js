@@ -5521,15 +5521,7 @@ function configureD3ZoomForVerticalPageScroll(zoom, svgEl) {
       svgEl.closest?.("#eight-kin-box") ||
       svgEl.parentElement;
     if (host) {
-      const id = String(svgEl.id || "");
-      const wideBottom =
-        id === "tree-gen21-bottom-svg" ||
-        id === "tree-gen32-detail-svg";
-      const base = wideBottom
-        ? "manipulation"
-        : host?.dataset?.allowPanX === "1"
-          ? "pan-x pan-y"
-          : "pan-y";
+      const base = host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : "pan-y";
       host.style.touchAction = base;
     }
   } catch {
@@ -7801,7 +7793,6 @@ function paintGenRange11to20TimelineTree(people, minGen, maxGen, wrap, svgEl) {
 
 /**
  * 32세 이후 하단: 홈「8촌 친척 찾기」와 동일한 `paintEightKinHorizontalTreeIntoSvg` 경로로만 그린다.
- * `paintGenRange21to31DescEightRule`·`paintEightKinHorizontalTreeIntoSvg` 본문은 변경하지 않는다.
  */
 function paintGen32DetailEightKinHorizontal(rootId, people, wrap, svgEl) {
   const ctxKey = "__gen32Det1120Ctx";
@@ -8106,7 +8097,7 @@ function renderGen32DetailPanel(rootId, people) {
   el.innerHTML = `
     <div class="tree-gen32-pedigree">
       <div id="tree-gen32-1120-wrap" class="tree-zoom-host relative min-h-[400px] w-full overflow-x-auto overflow-y-visible rounded-xl border border-stone-100 bg-stone-50/80">
-        <svg id="tree-gen32-detail-svg" class="h-full w-full touch-manipulation" role="img" aria-label="하위 8촌형 가로 연표"></svg>
+        <svg id="tree-gen32-detail-svg" class="h-full w-full" role="img" aria-label="하위 8촌형 가로 연표"></svg>
       </div>
     </div>`;
   const wrap1120 = document.getElementById("tree-gen32-1120-wrap");
@@ -8581,18 +8572,16 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
     .on("zoom", (event) => {
       gRoot.attr("transform", event.transform.toString());
     });
-  try {
-    /* d3-zoom은 터치 시 touchstart/move에서 nopropagation 등으로 브라우저 스크롤을 막는다.
-       zoom.filter로 1손만 막아도 리스너가 붙어 있으면 세로 스크롤이 죽는 경우가 많다.
-       touchable(false) → 터치용 줌 리스너 자체를 등록하지 않음 → 한 손으로 페이지 스크롤 가능.
-       확대: 마우스 휠(PC) + 미니 ＋/－ 버튼(모바일). 핀치 줌은 이 경로에서는 비활성. */
-    if (typeof zoom.touchable === "function") zoom.touchable(false);
-  } catch {
-    // ignore
-  }
+  /* 홈「8촌 친척」가로 트리(attachEightKinZoomBehavior)와 동일: touchable 기본값 유지 +
+     configureD3ZoomForVerticalPageScroll.zoom.filter → 1손 터치는 줌에서 제외(페이지 세로 스크롤), 2손만 핀치·팬 */
   configureD3ZoomForVerticalPageScroll(zoom, svgEl);
   svg.call(zoom);
   svg.on("dblclick.zoom", null);
+  try {
+    svgEl.style.touchAction = "pan-y";
+  } catch {
+    // ignore
+  }
 
   svgEl.__treeZoom = { kind: "eightKinLike", scale: 1 };
   // 외부(툴바)에서 확대/축소/원위치 제어할 수 있도록 보관
@@ -8991,14 +8980,15 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
   });
 
   const totalH = Math.max(260, maxY + PAD_T + 40 + rootFatherExtraBottom);
-  /* 인라인 touch-action:none 은 ID/CSS보다 우선해 한 손 스크롤·두 손 핀치까지 막는다.
-     제스처는 CSS(#tree-gen21-bottom-svg·#tree-gen32-detail-svg, 래퍼) + configureD3Zoom 호스트에서 처리. */
+  /* 홈 mountEightKinHorizontalTreeSvg 와 동일: SVG는 pan-y — 한 손 세로는 브라우저,
+     두 손은 D3(zoom.filter가 터치 2개 이상만 허용). 인라인 touch-action:none 금지 */
   svg
     .attr("viewBox", `0 0 ${totalW} ${totalH}`)
     .attr("width", "100%")
     .attr("height", "100%")
     .style("overflow", "visible")
-    .style("cursor", "grab");
+    .style("cursor", "grab")
+    .style("touch-action", "pan-y");
 
   if (titleRight) {
     gNode

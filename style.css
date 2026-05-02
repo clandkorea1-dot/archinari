@@ -1319,17 +1319,12 @@
   touch-action: pan-x pan-y;
 }
 
-/* 21-31·32+ 하단 가로 트리: manipulation = 팬(세로 페이지·가로 박스) + 핀치(브라우저). JS 인라인 touch-action:none 금지. */
+/* 21-31·32+ 하단 가로 트리: 호스트는 .tree-zoom-host 와 동일 pan-y; 가로 스크롤 박스만 유지 */
 #tree-gen21-bottom-svg-wrap,
 #tree-gen32-1120-wrap {
-  touch-action: manipulation;
   overflow-x: auto;
   overflow-y: visible;
   -webkit-overflow-scrolling: touch;
-}
-#tree-gen21-bottom-svg,
-#tree-gen32-detail-svg {
-  touch-action: manipulation;
 }
 
 /* 11-20세 등 기본 트리 모드에서 "비교용 마운트"가 비어있으면 공간을 차지하지 않게 */
