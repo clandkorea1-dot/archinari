@@ -3811,11 +3811,11 @@ function initFootprintsEmbedZoom(stageId, assetHostId, zoomPrefix = "") {
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-  // "viewBox 줌"으로 확대하면 텍스트가 선명하게 유지된다.
-  const st = { scale: 1.25, x: 0, y: 0 };
   const MIN = 1;
   const MAX = 3.2;
-  const DEFAULT = 1.25;
+  /* 대동보(fp2) 세로 도면: 첫 화면은 전체 viewBox(가로=박스 폭에 맞춤). 타임라인 인포는 기존 살짝 확대. */
+  const DEFAULT = zoomPrefix === "fp2-" ? 1 : 1.25;
+  const st = { scale: DEFAULT, x: 0, y: 0 };
 
   const targetSvg = assetHost.querySelector("svg");
   if (!(targetSvg instanceof SVGSVGElement)) return;

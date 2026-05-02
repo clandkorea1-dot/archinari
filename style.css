@@ -165,6 +165,16 @@
   aspect-ratio: 9 / 16;
   max-height: min(72vh, 880px);
   width: 100%;
+  background: #f3efe4;
+}
+
+/* 대동보: 본문 베이지 바탕과 렌더 박스 가로 정렬(측면 흰 여백 완화) */
+#view-map #fp2-embed-stage,
+#view-map #fp2-embed-asset {
+  background-color: #f3efe4;
+}
+#view-map #fp2-embed-asset svg {
+  background-color: #f3efe4;
 }
 
 /* -------- 발자취: 하단 삽입 자료(SVG/IMG 공통) -------- */
