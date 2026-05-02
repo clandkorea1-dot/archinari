@@ -160,15 +160,15 @@
   aspect-ratio: auto;
   max-height: min(92vh, 1280px);
   max-height: min(92dvh, 1280px);
-  min-height: min(48vh, 420px);
-  min-height: min(48dvh, 420px);
+  /* flex 자식에서 스크롤 가능하게(기본 min-height:auto로 스크롤이 안 생기는 문제 방지) */
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   align-items: flex-start;
   justify-content: flex-start;
   -webkit-overflow-scrolling: touch;
   scroll-padding-top: 0;
-  overscroll-behavior: contain;
+  touch-action: auto;
 }
 
 #view-map #fp2-embed-asset {
@@ -177,6 +177,8 @@
   width: 100%;
   height: auto;
   min-height: 0;
+  /* 스크롤·탭이 부모 스테이지로 전달되도록(모바일 제스처) */
+  pointer-events: auto;
 }
 
 #view-map #fp2-embed-asset svg {
@@ -2160,6 +2162,8 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   flex-direction: column;
   min-height: 0;
   position: relative;
+  /* .more-fullscreen-body 기본 overflow:auto와 이중 스크롤 방지 — 세로는 fp-embed-stage만 */
+  overflow: hidden;
 }
 
 /* 발자취 인포그래픽 전체화면: 헤더 없음 — 인포 위 우측 상단 텍스트 닫기 */
@@ -2201,11 +2205,17 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
 .map-fp-fullscreen-body #fp2-embed-stage.fp-embed-stage--gen11 {
   max-height: none;
   height: 100%;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   align-items: flex-start;
   justify-content: flex-start;
   -webkit-overflow-scrolling: touch;
+  touch-action: auto;
+}
+
+.map-fp-fullscreen-body #fp2-embed-asset {
+  pointer-events: auto;
 }
 
 .map-fp-fullscreen-body #fp2-embed-asset svg {

@@ -3670,6 +3670,16 @@ function initHeaderTabs() {
       const doScroll = () => {
         const el = document.getElementById(scrollToId);
         if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (scrollToId === "fp2-embed-stage") {
+          requestAnimationFrame(() => {
+            try {
+              const stg = document.getElementById("fp2-embed-stage");
+              if (stg) stg.scrollTop = 0;
+            } catch {
+              // ignore
+            }
+          });
+        }
         highlightSubRow();
       };
 
@@ -3880,7 +3890,10 @@ function initFootprintsEmbedZoom(stageId, assetHostId, zoomPrefix = "") {
     stage.style.cursor = zoomedPastDefault ? "grab" : "default";
     // 기본 배율: 세로 스크롤을 페이지에 넘김(pan-y). 확대 후 또는 핀치 중에는 제스처 유지(none).
     if (pts.size >= 2) stage.style.touchAction = "none";
-    else stage.style.touchAction = zoomedPastDefault ? "none" : "pan-y";
+    else if (zoomPrefix === "fp2-" && !zoomedPastDefault) {
+      /* 대동보: 스테이지 내부 세로 스크롤 — pan-y(JS 기본)보다 auto가 모바일에서 안정적 */
+      stage.style.touchAction = "auto";
+    } else stage.style.touchAction = zoomedPastDefault ? "none" : "pan-y";
   };
 
   const reset = () => {
@@ -4101,6 +4114,16 @@ function bindMapFpInfographicFullscreen(opts) {
         if (typeof fn === "function") fn();
       } catch {
         // ignore
+      }
+      /* 대동보: 모달로 옮긴 직후 레이아웃이 잡힌 뒤 맨 위부터 보이게 */
+      if (stage.id === "fp2-embed-stage") {
+        requestAnimationFrame(() => {
+          try {
+            stage.scrollTop = 0;
+          } catch {
+            // ignore
+          }
+        });
       }
     });
   };
