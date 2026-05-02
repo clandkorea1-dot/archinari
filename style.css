@@ -1995,6 +1995,12 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   height: auto;
 }
 
+/* 히어로 영상: 박스 안 인라인 재생(iOS), 포스터는 위 poster 속성(hero-acheon.jpg) */
+#view-more .more-bento-hero-banner-video {
+  vertical-align: top;
+  background: #c8dbe8;
+}
+
 #app-header .hdr-wine {
   color: #8b2942;
 }

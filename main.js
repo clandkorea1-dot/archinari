@@ -5635,6 +5635,43 @@ async function updateAncestorsForSelected() {
   if (hint) hint.textContent = `직계 조상 ${out.length}명`;
 }
 
+/** 아천문중 히어로 영상: 시스템「움직임 줄이기」면 자동재생 안 함(포스터), 필요 시 재생 버튼만 표시 */
+function initAcheonHeroBannerVideo() {
+  const v = document.querySelector("#view-more .more-bento-hero-banner-video");
+  if (!v || typeof window.matchMedia !== "function") return;
+
+  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  const sync = () => {
+    if (mq.matches) {
+      v.removeAttribute("autoplay");
+      v.controls = true;
+      v.preload = "none";
+      try {
+        v.pause();
+        v.currentTime = 0;
+      } catch {
+        // ignore
+      }
+    } else {
+      v.controls = false;
+      v.preload = "metadata";
+      v.setAttribute("autoplay", "");
+      try {
+        v.setAttribute("muted", "");
+      } catch {
+        // ignore
+      }
+      const p = v.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    }
+  };
+
+  sync();
+  if (typeof mq.addEventListener === "function") mq.addEventListener("change", sync);
+  else if (typeof mq.addListener === "function") mq.addListener(sync);
+}
+
 function initHomeActions() {
   document
     .getElementById("ancestors-refresh-btn")
@@ -10455,6 +10492,7 @@ async function renderKinshipVisual(id1, id2, keyOpt = "") {
 initTreeControls();
 initPersonDetailActions();
 initHomeActions();
+initAcheonHeroBannerVideo();
 initHeaderTabs();
 initMorePageChrome();
 initMoreExpanders();

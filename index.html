@@ -617,15 +617,19 @@
       <div id="view-more" class="view-panel hidden flex flex-col pb-6">
         <div class="more-bento-frame">
           <div class="more-bento-hero-banner">
-            <img
-              src="assets/hero-acheon.jpg?v=1"
+            <video
+              class="more-bento-hero-banner-img more-bento-hero-banner-video"
+              poster="assets/hero-acheon.jpg?v=1"
+              playsinline
+              muted
+              loop
+              preload="metadata"
               width="1200"
               height="400"
-              class="more-bento-hero-banner-img"
-              alt="호숫가 모래사장 풍경: 아이 둘이 손을 잡고 걷는 장면과 맑은 하늘·나무·전통 건물이 어우러진 여름 풍경"
-              decoding="async"
-              fetchpriority="low"
-            />
+              aria-label="호숫가 모래사장 풍경: 아이 둘이 손을 잡고 걷는 장면과 맑은 하늘·나무·전통 건물이 어우러진 여름 풍경"
+            >
+              <source src="assets/hero-acheon.mp4?v=1" type="video/mp4" />
+            </video>
           </div>
 
           <section id="more-charter" class="more-bento-cell" aria-labelledby="more-charter-title">
