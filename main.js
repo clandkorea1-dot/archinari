@@ -102,6 +102,74 @@ async function refreshHeaderWeather() {
   }
 }
 
+/**
+ * 첫 페인트·상호작용 핸들러 이후로 미룰 작업(requestIdleCallback + timeout 폴백).
+ * 초기 메인 스레드에서 Tailwind/D3 등과 겹치는 부수 초기화를 줄여 체감 속도를 개선한다.
+ */
+function scheduleIdle(task, timeoutMs = 400) {
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(() => task(), { timeout: timeoutMs });
+  } else {
+    setTimeout(task, 16);
+  }
+}
+
+/** 발자취 탭 전용: 정적 지도 줌·타임라인 편집 — 홈 로드 시에는 실행하지 않음 */
+let mapTabAuxInitsDone = false;
+/** 하단 인포그래픽 SVG는 외부 파일로 두고 발자취 탭에서만 fetch */
+let fpEmbedZoomInited = false;
+let fpEmbedLoadPromise = null;
+
+function ensureMapTabAuxInits() {
+  if (mapTabAuxInitsDone) return;
+  mapTabAuxInitsDone = true;
+  initStaticMapInlineZoom();
+  initTimelineInlineEdits();
+}
+
+async function ensureFootprintsInfographicLoaded() {
+  const assetHost = document.getElementById("fp-embed-asset");
+  if (!assetHost) return;
+  if (assetHost.querySelector("svg")) {
+    if (!fpEmbedZoomInited) {
+      initFootprintsEmbedZoom();
+      fpEmbedZoomInited = true;
+    }
+    return;
+  }
+  const src = assetHost.getAttribute("data-fp-embed-src");
+  if (!src) return;
+  if (!fpEmbedLoadPromise) {
+    fpEmbedLoadPromise = (async () => {
+      const url = new URL(src, location.href);
+      const r = await fetch(url.href);
+      if (!r.ok) throw new Error(`fp-embed ${r.status}`);
+      const txt = await r.text();
+      assetHost.innerHTML = txt;
+      try {
+        const sv = assetHost.querySelector("svg");
+        if (sv && !sv.getAttribute("preserveAspectRatio")) {
+          sv.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        }
+      } catch {
+        // ignore
+      }
+      initFootprintsEmbedZoom();
+      fpEmbedZoomInited = true;
+    })().catch((e) => {
+      console.warn(e);
+      fpEmbedLoadPromise = null;
+      try {
+        assetHost.innerHTML =
+          '<p class="p-4 text-center text-[11px] text-stone-500">인포그래픽을 불러오지 못했습니다. 새로고침 후 발자취 탭을 다시 열어 주세요.</p>';
+      } catch {
+        // ignore
+      }
+    });
+  }
+  await fpEmbedLoadPromise;
+}
+
 /** 마지막 검색 결과 — 가계도 인물 목록에 사용 */
 let lastSearchRows = [];
 
@@ -360,6 +428,9 @@ function renderGen11InteractiveChain() {
     .force("charge", d3.forceManyBody().strength(-140))
     .force("collide", d3.forceCollide().radius((d) => d.r + 8).iterations(2))
     .force("center", d3.forceCenter(w / 2, h / 2))
+    /* 기본값보다 빠르게 수렴(모바일 체감) — 레이아웃 안정성은 tick 후 충분히 유지 */
+    .alphaDecay(0.07)
+    .velocityDecay(0.38)
     .on("tick", ticked);
 
   gen11ChainSim = sim;
@@ -818,9 +889,9 @@ function gen32ReachableRowIdsFromRoot(rowObjs, rootId) {
 
 /**
  * 32세 문중원 선택 후 하단「선택인물기준」가계도 전용 (`paintGen32DetailEightKinHorizontal`에서만 호출).
- * 세 번호 기준으로 33세 이하(= 32~33세 범위) 여성에게만 적용한다. (이 트리는 32~36 범위지만 34~36은 제외)
+ * 이 시트에 포함된 여성(성별 필드 또는 외손 열로 판별)에게 적용한다. 세 번호는 하단 트리 구간(32~36)과 맞춘다.
  *
- * 외손 열(외손/외손자/…)에 기록된 이름 중 첫 1명만 매칭·연결하고, 시트 부친 기준 형제·그 후손은 제거한다.
+ * 구글 시트 외손 열(외손/외손자/…)에 기록된 이름 중 첫 1명만 매칭·연결하고, 시트 부친 기준 형제·그 후손은 제거한다.
  * 매칭된 모–외손 구간은 `oesonBlueFatherIds`로 파란 연결선을 그린다. 다른 가계도 렌더에는 사용하지 않는다.
  *
  * (요청 보강) 성별 필드가 비어/혼재된 경우가 있어, "여성" 판정이 실패하더라도
@@ -831,8 +902,8 @@ function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId)
   const oesonBlueFatherIds = new Set();
   const rootStr = String(rootId || "").trim();
   const toRemove = new Set();
-  /** 세 번호 기준 33세 이하만(32~33) */
-  const OESON_RULE_MAX_GEN = 33;
+  /** 하단 32~36 연표와 동일 상한 — 이 구간 시트에 포함된 여성 모두 외손 첫 1인 규칙 대상 */
+  const OESON_RULE_MAX_GEN = 36;
 
   const getOesonList = (row) =>
     splitPeopleList(
@@ -3482,6 +3553,8 @@ function showView(viewId) {
 
   if (viewId === "view-map") {
     ensureMap();
+    ensureMapTabAuxInits();
+    void ensureFootprintsInfographicLoaded();
   }
 
   if (viewId === "view-home") {
@@ -10126,27 +10199,27 @@ initTreeZoomHosts();
 initTreeMiniZoomButtons();
 initMapFitButton();
 initMapMiniControls();
-initStaticMapInlineZoom();
-initTimelineInlineEdits();
-initFootprintsEmbedZoom();
+
 initMapFpInfographicFullscreen();
 initMapFullscreen();
 
-// 저장된 기준 인물이 있으면 자동 복원
-try {
-  const saved = loadSelectedPersonIdFromStorage();
-  if (saved) void selectPerson(saved);
-} catch {
-  // ignore
-}
+/* 홈 체감: 공지·날씨는 첫 페인트 직후 시작(저장 인물 API와 경쟁 완화) */
+requestAnimationFrame(() => {
+  void loadHomeNotices();
+  void refreshHeaderWeather();
+  try {
+    setInterval(() => void refreshHeaderWeather(), 15 * 60 * 1000);
+  } catch {
+    // ignore
+  }
+});
 
-// 홈 공지 로드
-void loadHomeNotices();
-
-// 헤더 날씨(영주) 로드 + 주기 갱신(15분)
-void refreshHeaderWeather();
-try {
-  setInterval(() => void refreshHeaderWeather(), 15 * 60 * 1000);
-} catch {
-  // ignore
-}
+/* 저장된 기준 인물 복원은 홈·공지 이후 여유 시점(홈 반응 우선) */
+scheduleIdle(() => {
+  try {
+    const saved = loadSelectedPersonIdFromStorage();
+    if (saved) void selectPerson(saved);
+  } catch {
+    // ignore
+  }
+}, 480);
