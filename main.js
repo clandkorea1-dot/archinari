@@ -5521,7 +5521,12 @@ function configureD3ZoomForVerticalPageScroll(zoom, svgEl) {
       svgEl.closest?.("#eight-kin-box") ||
       svgEl.parentElement;
     if (host) {
-      const base = host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : "pan-y";
+      const id = String(svgEl.id || "");
+      const wideBottom =
+        id === "tree-gen21-bottom-svg" ||
+        id === "tree-gen32-detail-svg";
+      const base =
+        wideBottom || host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : "pan-y";
       host.style.touchAction = base;
     }
   } catch {
@@ -8097,7 +8102,7 @@ function renderGen32DetailPanel(rootId, people) {
 
   el.innerHTML = `
     <div class="tree-gen32-pedigree">
-      <div id="tree-gen32-1120-wrap" class="tree-zoom-host relative min-h-[400px] w-full overflow-x-auto overflow-y-auto rounded-xl border border-stone-100 bg-stone-50/80">
+      <div id="tree-gen32-1120-wrap" class="tree-zoom-host relative min-h-[400px] w-full overflow-x-auto overflow-y-visible rounded-xl border border-stone-100 bg-stone-50/80">
         <svg id="tree-gen32-detail-svg" class="h-full w-full touch-manipulation" role="img" aria-label="하위 8촌형 가로 연표"></svg>
       </div>
     </div>`;
@@ -8573,6 +8578,15 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
     .on("zoom", (event) => {
       gRoot.attr("transform", event.transform.toString());
     });
+  try {
+    /* d3-zoom은 터치 시 touchstart/move에서 nopropagation 등으로 브라우저 스크롤을 막는다.
+       zoom.filter로 1손만 막아도 리스너가 붙어 있으면 세로 스크롤이 죽는 경우가 많다.
+       touchable(false) → 터치용 줌 리스너 자체를 등록하지 않음 → 한 손으로 페이지 스크롤 가능.
+       확대: 마우스 휠(PC) + 미니 ＋/－ 버튼(모바일). 핀치 줌은 이 경로에서는 비활성. */
+    if (typeof zoom.touchable === "function") zoom.touchable(false);
+  } catch {
+    // ignore
+  }
   configureD3ZoomForVerticalPageScroll(zoom, svgEl);
   svg.call(zoom);
   svg.on("dblclick.zoom", null);

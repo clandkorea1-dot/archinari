@@ -1319,6 +1319,18 @@
   touch-action: pan-x pan-y;
 }
 
+/* 21-31·32+ 하단 가로 트리: 터치는 가로(박스 스크롤)+세로(페이지 스크롤) 전달 — D3는 touchable(false)와 함께 사용 */
+#tree-gen21-bottom-svg-wrap,
+#tree-gen32-1120-wrap {
+  touch-action: pan-x pan-y;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+#tree-gen21-bottom-svg,
+#tree-gen32-detail-svg {
+  touch-action: pan-x pan-y;
+}
+
 /* 11-20세 등 기본 트리 모드에서 "비교용 마운트"가 비어있으면 공간을 차지하지 않게 */
 #tree-compare-mount:empty {
   display: none;
