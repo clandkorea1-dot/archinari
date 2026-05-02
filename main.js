@@ -1388,33 +1388,32 @@ async function hydrateFatherIdsForEightKin(ids, opts = {}) {
 
 function attachEightKinZoomBehavior(svg, gRoot, toolbar) {
   if (typeof d3 === "undefined") return;
-  // 모바일 UX: 기본 배율에서는 페이지 세로 스크롤 우선, 확대 시에는 드래그/줌 조작 우선
-  try {
-    svg.style.touchAction = "pan-y";
-  } catch {
-    // ignore
-  }
   const zoom = d3
     .zoom()
     .scaleExtent([0.12, 6])
     .on("zoom", (event) => {
       gRoot.setAttribute("transform", event.transform.toString());
-      try {
-        const k = Number(event?.transform?.k || 1);
-        svg.style.touchAction = k > 1.01 ? "none" : "pan-y";
-      } catch {
-        // ignore
-      }
     });
+  configureD3ZoomForVerticalPageScroll(zoom, svg);
   const sel = d3.select(svg);
   sel.call(zoom);
   sel.on("dblclick.zoom", null);
+  try {
+    svg.__treeZoom = {
+      zoom,
+      initial: d3.zoomTransform(sel.node()),
+      sel,
+    };
+  } catch {
+    // ignore
+  }
   toolbar.querySelectorAll(".eight-kin-z").forEach((btn) => {
     btn.addEventListener("click", () => {
       const act = btn.getAttribute("data-act");
+      const init = svg.__treeZoom?.initial ?? d3.zoomIdentity;
       if (act === "in") sel.transition().duration(180).call(zoom.scaleBy, 1.28);
       else if (act === "out") sel.transition().duration(180).call(zoom.scaleBy, 1 / 1.28);
-      else if (act === "reset") sel.transition().duration(220).call(zoom.transform, d3.zoomIdentity);
+      else if (act === "reset") sel.transition().duration(220).call(zoom.transform, init);
     });
   });
 }
@@ -3686,14 +3685,23 @@ function initFootprintsEmbedZoom() {
     st.y = clamp(st.y, 0, maxY);
   };
 
+  const pts = new Map(); // pointerId -> {x,y}
+  let pinchBaseDist = 0;
+  let pinchBaseScale = 1;
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+
   const apply = () => {
     clampPan();
     const viewW = base.w / st.scale;
     const viewH = base.h / st.scale;
     targetSvg.setAttribute("viewBox", `${st.x} ${st.y} ${viewW} ${viewH}`);
-    stage.style.cursor = st.scale > 1 ? "grab" : "default";
-    // 핀치 줌(모바일) + 드래그 이동을 JS에서 처리하므로 항상 제스처를 직접 받는다.
-    stage.style.touchAction = "none";
+    const zoomedPastDefault = st.scale > DEFAULT + 0.001;
+    stage.style.cursor = zoomedPastDefault ? "grab" : "default";
+    // 기본 배율: 세로 스크롤을 페이지에 넘김(pan-y). 확대 후 또는 핀치 중에는 제스처 유지(none).
+    if (pts.size >= 2) stage.style.touchAction = "none";
+    else stage.style.touchAction = zoomedPastDefault ? "none" : "pan-y";
   };
 
   const reset = () => {
@@ -3759,35 +3767,35 @@ function initFootprintsEmbedZoom() {
     { passive: false }
   );
 
-  // Drag pan when zoomed
-  let dragging = false;
-  let lastX = 0;
-  let lastY = 0;
-
-  // Pinch zoom (mobile): pointer 2개 거리로 스케일 조절
-  const pts = new Map(); // pointerId -> {x,y}
-  let pinchBaseDist = 0;
-  let pinchBaseScale = 1;
-
   stage.addEventListener("pointerdown", (e) => {
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    // 핀치 시작
     if (pts.size === 2) {
       const [a, b] = [...pts.values()];
       pinchBaseDist = Math.hypot(b.x - a.x, b.y - a.y) || 1;
       pinchBaseScale = st.scale;
       dragging = false;
-    } else if (pts.size === 1 && st.scale > 1) {
+      stage.style.touchAction = "none";
+      try {
+        stage.setPointerCapture?.(e.pointerId);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    if (pts.size === 1 && st.scale > DEFAULT + 0.001) {
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
       stage.style.cursor = "grabbing";
+      stage.style.touchAction = "none";
+      try {
+        stage.setPointerCapture?.(e.pointerId);
+      } catch {
+        // ignore
+      }
+      return;
     }
-    try {
-      stage.setPointerCapture?.(e.pointerId);
-    } catch {
-      // ignore
-    }
+    apply();
   });
 
   stage.addEventListener("pointermove", (e) => {
@@ -3822,14 +3830,13 @@ function initFootprintsEmbedZoom() {
   const endDrag = (e) => {
     pts.delete(e.pointerId);
     if (pts.size < 2) pinchBaseDist = 0;
-    if (!dragging && pts.size) return;
-    dragging = false;
-    stage.style.cursor = st.scale > 1 ? "grab" : "default";
+    if (dragging) dragging = false;
     try {
       stage.releasePointerCapture?.(e.pointerId);
     } catch {
       // ignore
     }
+    apply();
   };
 
   stage.addEventListener("pointerup", endDrag);
@@ -5497,6 +5504,41 @@ function nodeIsFocused(d, focusId, fromNested) {
   return false;
 }
 
+/**
+ * D3 zoom: 한 손가락은 페이지 세로 스크롤, 두 손가락(핀치·이동)만 SVG 줌/팬.
+ * 홈 8촌 가로 트리·21–31·32+ 하단 등 tree-zoom-host 밖 SVG에도 동일 적용.
+ */
+function configureD3ZoomForVerticalPageScroll(zoom, svgEl) {
+  if (!zoom || !svgEl) return;
+  try {
+    const host =
+      svgEl.closest?.(".tree-zoom-host") ||
+      svgEl.closest?.(".eight-kin-tree-view") ||
+      svgEl.closest?.("#eight-kin-box") ||
+      svgEl.parentElement;
+    if (host) {
+      const base = host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : "pan-y";
+      host.style.touchAction = base;
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    zoom.filter((event) => {
+      const t = String(event?.type || "");
+      if (t.startsWith("touch")) {
+        const touches = event?.touches;
+        const n = touches && typeof touches.length === "number" ? touches.length : 0;
+        return n >= 2;
+      }
+      if (t === "wheel") return true;
+      return !event?.ctrlKey && !event?.button;
+    });
+  } catch {
+    // ignore
+  }
+}
+
 /** 가계도/8촌 트리 SVG: 처음 맞춤 변환을 저장해 「맞춤」 버튼으로 복귀 */
 function attachTreeZoomState(svgEl, zoom, initialTransform) {
   if (!svgEl || !zoom || !initialTransform) return;
@@ -5505,37 +5547,7 @@ function attachTreeZoomState(svgEl, zoom, initialTransform) {
     initial: initialTransform,
     sel: d3.select(svgEl),
   };
-  // 모바일 UX(중요): 한 손가락 스와이프는 "페이지 스크롤"이 우선이어야 한다.
-  // - D3 zoom은 기본적으로 터치 드래그를 가로채 preventDefault()가 걸려 스크롤이 막힐 수 있다.
-  // - 그래서 터치(손가락) 입력은 "두 손가락(핀치/팬)"일 때만 줌을 허용한다.
-  // - 확대/축소는 버튼(UI)로도 가능하도록 유지한다.
-  try {
-    const host = svgEl.closest?.(".tree-zoom-host");
-    if (host) {
-      const base = host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : "pan-y";
-      host.style.touchAction = base;
-    }
-  } catch {
-    // ignore
-  }
-
-  // (핵심) 터치 1개는 스크롤로 넘기기: 줌/팬 이벤트를 받지 않는다.
-  try {
-    zoom.filter((event) => {
-      const t = String(event?.type || "");
-      if (t.startsWith("touch")) {
-        const touches = event?.touches;
-        const n = touches && typeof touches.length === "number" ? touches.length : 0;
-        return n >= 2; // 두 손가락일 때만
-      }
-      // wheel(마우스 휠)은 허용
-      if (t === "wheel") return true;
-      // 기본 필터(대략 d3 기본값과 동일): ctrlKey 줌 차단, 우클릭/중클릭 차단
-      return !event?.ctrlKey && !event?.button;
-    });
-  } catch {
-    // ignore
-  }
+  configureD3ZoomForVerticalPageScroll(zoom, svgEl);
 }
 
 function paintD3TreeLayout(root, focusId, wrap, svgEl, fromNested) {
@@ -8557,6 +8569,7 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
     .on("zoom", (event) => {
       gRoot.attr("transform", event.transform.toString());
     });
+  configureD3ZoomForVerticalPageScroll(zoom, svgEl);
   svg.call(zoom);
   svg.on("dblclick.zoom", null);
 
@@ -9093,6 +9106,18 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
         const { vbW, vbH } = readViewBoxUserSize();
         if (vbW > 2 && vbH > 2) {
           runInitialFit();
+          try {
+            const tr = d3.zoomTransform(svg.node());
+            svgEl.__treeZoom = {
+              ...(svgEl.__treeZoom || {}),
+              zoom,
+              initial: tr,
+              sel: svg,
+              kind: "eightKinLike",
+            };
+          } catch {
+            // ignore
+          }
           return;
         }
       } catch {
@@ -9139,6 +9164,17 @@ function ensureGen21BottomZoomToolbar(bottomWrap, bottomSvg) {
         else if (act === "fit") {
           const fit = bottomSvg.__eightKinLikeFit?.fitLastGenToRight;
           if (typeof fit === "function") fit();
+          try {
+            const tr = d3.zoomTransform(svg.node());
+            bottomSvg.__treeZoom = {
+              ...(bottomSvg.__treeZoom || {}),
+              zoom,
+              initial: tr,
+              sel: svg,
+            };
+          } catch {
+            // ignore
+          }
         }
       });
     });
@@ -9296,6 +9332,7 @@ async function updateTreeView() {
   // 11-20세 전용 체인(하단 상호작용): 화면에 보일 때만 설치
   if (treeViewMode === "genrange_11_20") {
     requestAnimationFrame(() => {
+      if (seq !== treeViewUpdateSeq) return;
       // SVG가 레이아웃된 뒤 실제 폭/높이를 읽어야 함
       renderGen11InteractiveChain();
     });
@@ -9305,6 +9342,7 @@ async function updateTreeView() {
     hideGenRangeCompareList();
     if (treeViewMode === "genrange_32_plus" && treeGenFilter) {
       await paintGen32PlusDualPanels();
+      if (seq !== treeViewUpdateSeq) return;
       if (hint) {
         hint.textContent = lastGen32PanelPeople.length
           ? "표시 범위: 32–36세 (32세 이후 · 명단·상세)"
@@ -9479,6 +9517,7 @@ async function updateTreeView() {
   }
   const focus = selectedPersonId || annotatePeople(lastSearchRows)[0]?.id || null;
   await drawFamilyTree(focus);
+  if (seq !== treeViewUpdateSeq) return;
 }
 
 /**

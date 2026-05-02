@@ -32,14 +32,19 @@
   overflow: hidden;
   /* 기본(1배)에서는 페이지 스크롤 허용, 줌 시에는 JS에서 none으로 전환 */
   touch-action: pan-x pan-y;
+  /* 구글 내지도 상단 검은 타이틀 바를 밀어 올려 숨길 때 사용하는 크롭량 */
+  --mymaps-embed-crop: 52px;
 }
 
 /* 구글 내지도(My Maps) iframe 상단 검은 바(타이틀 영역) 숨김용 "크롭"
-   - iframe 내부 UI는 제어 불가(다른 도메인)라 화면에서만 위를 잘라낸다. */
+   - iframe 내부 UI는 제어 불가(다른 도메인)라 화면에서만 위를 잘라낸다.
+   - 여전히 얇은 검은 띠가 보이면 --mymaps-embed-crop를 56~60px로 올리거나 clip inset을 3px로 조정 */
 #map-mymaps-embed {
   position: relative;
-  top: -44px; /* 상단 바 높이(필요 시 36~56px로 미세 조정) */
-  height: calc(100% + 44px);
+  top: calc(-1 * var(--mymaps-embed-crop));
+  height: calc(100% + var(--mymaps-embed-crop));
+  /* 크롭 경계에 남는 1~2px 잔선(안티앨리어싱) 제거 */
+  clip-path: inset(2px 0 0 0);
 }
 
 /* 발자취: 이미지+마커 오버레이를 함께 줌(변환은 이 래퍼에 적용) */
@@ -157,7 +162,11 @@
   aspect-ratio: 16 / 9;
   background: #fff;
   overflow: hidden;
-  touch-action: pan-x pan-y;
+  /* 기본: 세로 스크롤은 페이지로(한 손). 확대·핀치 시에는 JS가 touch-action 전환 */
+  touch-action: pan-y;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .fp-embed-controls {
@@ -238,10 +247,14 @@
 }
 
 .fp-embed-asset {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
-  transform-origin: 0 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  transform-origin: center center;
   will-change: transform;
   user-select: none;
   -webkit-user-drag: none;
@@ -250,10 +263,14 @@
   pointer-events: none;
 }
 
-/* object 내부 SVG도 꽉 차게 */
+/* object 내부 SVG: 프레임 안에서 가운데·contain */
 .fp-embed-asset svg {
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0 auto;
+  display: block;
 }
 
 /* 발자취 하단 SVG: 원본 SVG의 글자색(fill)을 존중한다.
@@ -1308,11 +1325,24 @@
 }
 
 /* ---------- 가계도 11-20세: 인터랙티브 체인 박스 ---------- */
+/* 폭 +20%는 섹션(#tree-gen11-chain)에서 처리 — 프레임은 섹션 너비 100% */
 .tree-gen11-chain-frame {
   border: 1px solid rgba(22, 101, 52, 0.32); /* seal, 연하게 */
   border-radius: 16px;
   background: rgba(245, 245, 245, 0.95); /* 연한 회색 */
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 11-20 모드: 체인 영역만 가로 약 20% 확대(SVG viewBox도 넓어짐) */
+#view-tree.gen11to20-tight #tree-gen11-chain {
+  margin-top: 0.5rem;
+  width: 120%;
+  max-width: none;
+  margin-left: -10%;
+  margin-right: -10%;
+  box-sizing: border-box;
 }
 
 .tree-gen11-chain-canvas {
@@ -1346,7 +1376,8 @@
 
 .tree-gen11-chain-detail-body {
   margin-top: 4px;
-  font-size: 11px;
+  /* 제목(.tree-gen11-chain-detail-title)과 동일 글자 크기 */
+  font-size: 12px;
   color: rgba(51, 65, 85, 0.92);
   line-height: 1.35;
   font-weight: 700;
@@ -1384,9 +1415,6 @@
 }
 #view-tree.gen11to20-tight #tree-hint {
   margin-bottom: 0.25rem;
-}
-#view-tree.gen11to20-tight #tree-gen11-chain {
-  margin-top: 0.5rem;
 }
 
 /* 11-20세 전용(상단): 핀치/드래그 사용 시 버튼형 줌 UI는 숨김 */
@@ -1757,6 +1785,8 @@ html {
 
 body {
   letter-spacing: -0.01em;
+  /* 모바일 등에서 체인 박스 폭 확대 시 생기는 가로 스크롤 방지(내부 overflow-x:auto는 유지) */
+  overflow-x: hidden;
 }
 
 /* 카드 그림자/테두리 톤 다운 */
