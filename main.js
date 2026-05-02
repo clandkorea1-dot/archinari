@@ -1046,11 +1046,10 @@ function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId)
       /** `people`에 없는 외손(이름만) → 가상 자녀 1명으로 모와 파란 연결 */
       const synId = `__oeson_${fid}`;
       if (keepMap.has(synId)) continue;
+      /** 외손은 문중원 행이 없어도 모의 자녀로 보고, 세대는 모 바로 다음(모+1), 상한 36 — 연표 열은 `세손`으로 맞춤 */
       const synGen =
         typeof F.gen === "number"
-          ? F.gen >= OESON_RULE_MAX_GEN
-            ? OESON_RULE_MAX_GEN
-            : F.gen + 1
+          ? Math.min(OESON_RULE_MAX_GEN, F.gen + 1)
           : null;
       const displayName = String(wantRaw).trim();
       keepMap.set(synId, {
@@ -1058,7 +1057,12 @@ function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId)
         name: displayName,
         gen: synGen,
         fatherId: "",
-        row: { 이름: displayName, 성별: "", 외손: "" },
+        row: {
+          이름: displayName,
+          성별: "",
+          외손: "",
+          세손: synGen,
+        },
       });
       syntheticParentByChildId.set(synId, fid);
       oesonBlueFatherIds.add(fid);
