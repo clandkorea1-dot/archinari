@@ -2291,6 +2291,102 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   margin: 0.22rem 0;
 }
 
+/* ---------- 아천문중 정관 본문 ---------- */
+#view-more .more-charter-md {
+  font-size: 0.875rem;
+  line-height: 1.68;
+  letter-spacing: -0.01em;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+#view-more .more-charter-md > h1 {
+  margin: 0 0 0.85rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid rgba(22, 101, 52, 0.35);
+  font-size: 1.125rem;
+  font-weight: 800;
+  color: rgba(15, 46, 38, 0.96);
+}
+
+#view-more .more-charter-md blockquote {
+  margin: 0.45rem 0 0.65rem;
+  padding: 0.45rem 0.65rem 0.5rem;
+  border-left: 3px solid rgba(139, 41, 66, 0.42);
+  background: rgba(245, 240, 230, 0.65);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.8125rem;
+  color: rgba(26, 46, 46, 0.88);
+}
+
+#view-more .more-charter-md blockquote > p {
+  margin: 0;
+}
+
+#view-more .more-charter-md hr {
+  margin: 1rem 0;
+  border: none;
+  border-top: 1px dashed rgba(120, 113, 108, 0.35);
+}
+
+#view-more .more-charter-md h2 {
+  margin: 1.35rem 0 0.65rem;
+  padding: 0.35rem 0 0.25rem;
+  font-size: 0.9375rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: rgba(22, 101, 52, 0.98);
+  border-bottom: 1px solid rgba(22, 101, 52, 0.22);
+}
+
+#view-more .more-charter-md h2:first-of-type {
+  margin-top: 0.35rem;
+}
+
+#view-more .more-charter-md h3 {
+  margin: 1rem 0 0.45rem;
+  padding-left: 0.55rem;
+  font-size: 0.875rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: rgba(26, 46, 46, 0.94);
+  border-left: 3px solid rgba(22, 101, 52, 0.55);
+}
+
+#view-more .more-charter-md p {
+  margin: 0.45rem 0;
+}
+
+#view-more .more-charter-md ul,
+#view-more .more-charter-md ol {
+  margin: 0.4rem 0 0.55rem;
+  padding-left: 1.25rem;
+}
+
+#view-more .more-charter-md ol {
+  list-style: decimal;
+}
+
+#view-more .more-charter-md ul {
+  list-style: disc;
+}
+
+#view-more .more-charter-md li {
+  margin: 0.28rem 0;
+  padding-left: 0.15rem;
+}
+
+#view-more .more-charter-md li > ul,
+#view-more .more-charter-md li > ol {
+  margin-top: 0.25rem;
+  margin-bottom: 0.35rem;
+}
+
+#view-more .more-charter-md strong {
+  font-weight: 800;
+  color: rgba(15, 46, 38, 0.95);
+}
+
 /* 인포그래픽 참고: 와인색 점선 위에 왼쪽 정렬·오른쪽 비스듬한 타이틀 막대 */
 #view-more .more-bento-section-kick {
   position: relative;
