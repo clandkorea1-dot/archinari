@@ -140,6 +140,14 @@ async function ensureFpEmbedAssetLoaded(assetHostId) {
   const assetHost = document.getElementById(assetHostId);
   if (!assetHost) return;
   if (assetHost.querySelector("svg")) {
+    try {
+      const sv = assetHost.querySelector("svg");
+      if (sv instanceof SVGSVGElement && assetHostId === "fp2-embed-asset") {
+        sv.setAttribute("preserveAspectRatio", "xMidYMin meet");
+      }
+    } catch {
+      // ignore
+    }
     initFootprintsEmbedZoomForAssetHost(assetHostId);
     return;
   }
@@ -156,8 +164,12 @@ async function ensureFpEmbedAssetLoaded(assetHostId) {
         assetHost.innerHTML = txt;
         try {
           const sv = assetHost.querySelector("svg");
-          if (sv && !sv.getAttribute("preserveAspectRatio")) {
-            sv.setAttribute("preserveAspectRatio", "xMidYMid meet");
+          if (sv instanceof SVGSVGElement) {
+            if (assetHostId === "fp2-embed-asset") {
+              sv.setAttribute("preserveAspectRatio", "xMidYMin meet");
+            } else if (!sv.getAttribute("preserveAspectRatio")) {
+              sv.setAttribute("preserveAspectRatio", "xMidYMid meet");
+            }
           }
         } catch {
           // ignore
@@ -3864,8 +3876,16 @@ function initFootprintsEmbedZoom(stageId, assetHostId, zoomPrefix = "") {
     const viewW = base.w / st.scale;
     const viewH = base.h / st.scale;
     st.x = (base.w - viewW) / 2;
-    st.y = (base.h - viewH) / 2;
+    /* 대동보: 잘라내지 않고 스크롤로 보므로 뷰는 항상 문서 위쪽(y=0) 기준 */
+    st.y = zoomPrefix === "fp2-" ? 0 : (base.h - viewH) / 2;
     apply();
+    if (zoomPrefix === "fp2-") {
+      try {
+        stage.scrollTop = 0;
+      } catch {
+        // ignore
+      }
+    }
   };
 
   const zoomTo = (nextScale, anchorX, anchorY) => {
@@ -3907,10 +3927,13 @@ function initFootprintsEmbedZoom(stageId, assetHostId, zoomPrefix = "") {
     reset();
   });
 
-  // Wheel zoom (desktop)
+  // Wheel: 대동보는 기본 배율에서 세로 스크롤(스테이지 overflow). Ctrl/⌥+휠만 줌.
   stage.addEventListener(
     "wheel",
     (e) => {
+      if (zoomPrefix === "fp2-" && st.scale <= DEFAULT + 0.001 && !e.ctrlKey && !e.metaKey) {
+        return;
+      }
       e.preventDefault();
       const r = stage.getBoundingClientRect();
       const ax = e.clientX - r.left;

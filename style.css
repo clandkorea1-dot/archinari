@@ -155,20 +155,39 @@
   border-top: 1px dashed rgba(120, 113, 108, 0.25);
 }
 
-/* 11세 족보(세로 SVG 등): 인페이지 프레임 비율·높이 제한 — 깨짐 방지 */
-.fp-embed-stage--gen11 {
-  aspect-ratio: 9 / 16;
+/* 대동보(세로 SVG): 고정 비율 박스 대신 가로 100%·세로는 내용 높이 — 잘림 없이 스크롤, 상단부터 */
+#view-map #fp2-embed-stage.fp-embed-stage--gen11 {
+  aspect-ratio: auto;
   max-height: min(72vh, 880px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-items: flex-start;
+  justify-content: flex-start;
+  -webkit-overflow-scrolling: touch;
+}
+
+#view-map #fp2-embed-asset {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+#view-map #fp2-embed-asset svg {
+  width: 100%;
+  height: auto !important;
+  max-height: none !important;
 }
 
 .fp-embed-stage-placeholder--gen11 {
-  aspect-ratio: 9 / 16;
-  max-height: min(72vh, 880px);
   width: 100%;
+  min-height: 160px;
+  max-height: min(72vh, 880px);
   background: #f3efe4;
 }
 
-/* 대동보: 본문 베이지 바탕과 렌더 박스 가로 정렬(측면 흰 여백 완화) */
+/* 대동보: 본문 베이지 바탕 */
 #view-map #fp2-embed-stage,
 #view-map #fp2-embed-asset {
   background-color: #f3efe4;
@@ -2168,9 +2187,21 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   aspect-ratio: unset;
 }
 
-/* 전체화면에서는 11세 박스의 인페이지 max-height 제한 해제 */
-.map-fp-fullscreen-body .fp-embed-stage--gen11 {
+/* 전체화면 대동보: 높이 채우고 세로 스크롤(잘림 없음) */
+.map-fp-fullscreen-body #fp2-embed-stage.fp-embed-stage--gen11 {
   max-height: none;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-items: flex-start;
+  justify-content: flex-start;
+  -webkit-overflow-scrolling: touch;
+}
+
+.map-fp-fullscreen-body #fp2-embed-asset svg {
+  width: 100%;
+  height: auto !important;
+  max-height: none !important;
 }
 
 .more-fullscreen-panel {
