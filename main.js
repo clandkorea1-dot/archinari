@@ -5525,8 +5525,11 @@ function configureD3ZoomForVerticalPageScroll(zoom, svgEl) {
       const wideBottom =
         id === "tree-gen21-bottom-svg" ||
         id === "tree-gen32-detail-svg";
-      const base =
-        wideBottom || host?.dataset?.allowPanX === "1" ? "pan-x pan-y" : "pan-y";
+      const base = wideBottom
+        ? "manipulation"
+        : host?.dataset?.allowPanX === "1"
+          ? "pan-x pan-y"
+          : "pan-y";
       host.style.touchAction = base;
     }
   } catch {
@@ -8988,13 +8991,14 @@ function paintEightKinHorizontalTreeIntoSvg(svgEl, opts) {
   });
 
   const totalH = Math.max(260, maxY + PAD_T + 40 + rootFatherExtraBottom);
+  /* 인라인 touch-action:none 은 ID/CSS보다 우선해 한 손 스크롤·두 손 핀치까지 막는다.
+     제스처는 CSS(#tree-gen21-bottom-svg·#tree-gen32-detail-svg, 래퍼) + configureD3Zoom 호스트에서 처리. */
   svg
     .attr("viewBox", `0 0 ${totalW} ${totalH}`)
     .attr("width", "100%")
     .attr("height", "100%")
     .style("overflow", "visible")
-    .style("cursor", "grab")
-    .style("touch-action", "none");
+    .style("cursor", "grab");
 
   if (titleRight) {
     gNode
