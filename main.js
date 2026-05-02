@@ -854,7 +854,7 @@ function readNodeGenderIsFemale(row) {
     .trim()
     .toLowerCase();
   if (!v) return false;
-  if (/^(여|녀|f|female|w|woman|2|女)$/.test(v)) return true;
+  if (/^(여|녀|여성|f|female|w|woman|2|女)$/.test(v)) return true;
   if (v.includes("여") && !v.includes("남")) return true;
   return false;
 }
@@ -928,14 +928,14 @@ function gen32ReachableRowIdsFromRoot(rowObjs, rootId) {
 }
 
 /**
- * 32세 문중원 선택 후 하단「선택인물기준」가계도 전용 (`paintGen32DetailEightKinHorizontal`에서만 호출).
- * 이 시트에 포함된 여성(성별 필드 또는 외손 열로 판별)에게 적용한다. 세 번호는 하단 트리 구간(32~36)과 맞춘다.
+ * **범위:** 오직 가계도 「32세 이후」모드 **하단**「선택인물기준」가계도 렌더링에만 쓴다.
+ * `paintGen32DetailEightKinHorizontal`에서만 호출 — 1–31세 트리·홈 8촌 트리·족보 카드 등 다른 화면에는 적용하지 않는다.
  *
- * 구글 시트 외손 열(외손/외손자/…)에 기록된 이름 중 첫 1명만 매칭·연결하고, 시트 부친 기준 형제·그 후손은 제거한다.
- * 매칭된 모–외손 구간은 `oesonBlueFatherIds`로 파란 연결선을 그린다. 다른 가계도 렌더에는 사용하지 않는다.
+ * people 시트 **성별** 열(일반적으로 E열)이 여성인 문중원만 대상. 세 번호는 하단 트리 구간(32~36)과 맞춘다.
  *
- * (요청 보강) 성별 필드가 비어/혼재된 경우가 있어, "여성" 판정이 실패하더라도
- * 해당 문중원ID의 행에 외손 열이 채워져 있으면 여성 후보로 간주해 그 외손 기록을 사용한다.
+ * 여성이면 **외손** 열(일반적으로 I열, 키 `외손` 등)에 적힌 이름 중 첫 1명만 매칭·연결하고,
+ * 시트 부친 기준 형제·그 후손은 제거한다.
+ * 매칭된 모–외손 구간은 `oesonBlueFatherIds`로 파란 연결선을 그린다.
  */
 function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId) {
   const syntheticParentByChildId = new Map();
@@ -961,11 +961,10 @@ function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId)
     const gF = typeof F.gen === "number" ? F.gen : null;
     if (gF == null || gF > OESON_RULE_MAX_GEN) continue;
 
-    const oesonList = getOesonList(F.row);
-    const hasOeson = Array.isArray(oesonList) && oesonList.length > 0;
     const isFemaleByRow = readNodeGenderIsFemale(F.row);
-    if (!isFemaleByRow && !hasOeson) continue;
+    if (!isFemaleByRow) continue;
 
+    const oesonList = getOesonList(F.row);
     const wantRaw = oesonList[0];
     if (!wantRaw || !String(wantRaw).trim()) continue;
     const want = normalizeNameTokenForOesonMatch(wantRaw);
@@ -8367,7 +8366,7 @@ function renderGen32DetailPanel(rootId, people) {
   if (dh) {
     dh.textContent =
       nSub > 0
-        ? `32~36세 8촌형 가로 연표(홈 8촌 친척 찾기와 동일 규칙). 여성은 외손란 첫째 1인만 푸른색 연결. 하위 ${nSub}명.`
+        ? `32~36세 8촌형 가로 연표(홈 8촌 친척 찾기와 동일 규칙). 성별이 여성인 문중원은 외손 열 첫째 1인만 푸른색 연결. 하위 ${nSub}명.`
         : "하위 인원이 없습니다. 자녀 행의 부친 ID가 기준 인물과 연결되는지 확인해 주세요.";
   }
 }

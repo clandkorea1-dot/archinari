@@ -165,6 +165,18 @@ function rowToMapPoint_(obj) {
   };
 }
 
+/** 헤더 1행에서 names 중 첫 매칭 열 인덱스(없으면 -1) */
+function headerIndex_(headerRow, names) {
+  const h = headerRow.map(function (x) {
+    return String(x || "").trim();
+  });
+  for (var j = 0; j < names.length; j++) {
+    const ix = h.indexOf(names[j]);
+    if (ix >= 0) return ix;
+  }
+  return -1;
+}
+
 /* -------------------- people 캐시 -------------------- */
 let cache = null;
 function getCache() {
@@ -184,6 +196,9 @@ function getCache() {
     // 사용자 시트 실제 컬럼명: 가지경로 / 참고
     etc: h.indexOf("가지경로"),
     branch: h.indexOf("참고"),
+    // E열=성별, I열=외손(헤더 표준명) — 위치는 헤더 이름으로 결정
+    gender: headerIndex_(h, ["성별", "gender", "sex", "Sex", "Gender"]),
+    oeson: headerIndex_(h, ["외손", "외손자", "외손녀", "외손들", "외손목록"]),
   };
   if (i.id < 0) throw new Error("people 시트 헤더에 '문중원ID' 컬럼이 없습니다.");
   if (i.name < 0) throw new Error("people 시트 헤더에 '이름' 컬럼이 없습니다.");
@@ -204,6 +219,8 @@ function getCache() {
       // 프론트가 기대하는 키로 내려주기 위해 내부 표준화
       기타: i.etc >= 0 ? String(r[i.etc] ?? "").trim() : "",
       분기: i.branch >= 0 ? String(r[i.branch] ?? "").trim() : "",
+      성별: i.gender >= 0 ? String(r[i.gender] ?? "").trim() : "",
+      외손: i.oeson >= 0 ? String(r[i.oeson] ?? "").trim() : "",
     };
     byId[person.id] = person;
     if (!byName[person.name]) byName[person.name] = [];
@@ -238,6 +255,8 @@ function searchPersonsByName(name) {
       // (요청) 원 아래 표시용
       기타: p.기타 ?? "",
       분기: p.분기 ?? "",
+      성별: p.성별 ?? "",
+      외손: p.외손 ?? "",
     };
   });
 }
@@ -265,6 +284,8 @@ function getDetail(id) {
     siblings,
     기타: me.기타 ?? "",
     분기: me.분기 ?? "",
+    성별: me.성별 ?? "",
+    외손: me.외손 ?? "",
   };
 }
 /* -------------------- kinship -------------------- */
@@ -510,6 +531,8 @@ function getGenRange(p) {
       아버지의ID: me.fatId,
       기타: String(me.기타 ?? "").trim(), // people의 "가지경로"가 여기로 들어옴
       분기: String(me.분기 ?? "").trim(), // people의 "참고"가 여기로 들어옴
+      성별: String(me.성별 ?? "").trim(),
+      외손: String(me.외손 ?? "").trim(),
     });
   };
   // base는 무조건 포함
