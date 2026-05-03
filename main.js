@@ -786,6 +786,114 @@ function initialsFromName(name) {
   return s.length <= 2 ? s : s.slice(0, 2);
 }
 
+/**
+ * Apps Script 웹앱(JSON)용 — BOM·Google XSSI 접두만 제거 후 파싱.
+ * 첫 `{`~마지막 `}` 잘라내기는 HTML/중첩 JSON에서 오파싱되므로 apiGet에는 쓰지 않음.
+ */
+function parseApiJson(text) {
+  const t = String(text || "").replace(/^\uFEFF/, "").trim();
+  if (!t) return null;
+  try {
+    return JSON.parse(t);
+  } catch {
+    try {
+      return JSON.parse(t.replace(/^\)\]\}'\s*\n?/, "").trim());
+    } catch {
+      return null;
+    }
+  }
+}
+
+/** 투표 집계 진단용: 본문에 JSON이 섞일 때만 추가 시도 */
+function parseJsonLenient(text) {
+  let j = parseApiJson(text);
+  if (j != null) return j;
+  const raw = String(text || "").replace(/^\uFEFF/, "").trim();
+  const i = raw.indexOf("{");
+  const jEnd = raw.lastIndexOf("}");
+  if (i >= 0 && jEnd > i) {
+    try {
+      return JSON.parse(raw.slice(i, jEnd + 1));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * voteTally 전용: apiGetSilent보다 실패 원인을 살리고, JSON 파싱을 넓게 시도합니다.
+ * @returns {{ json: object|null, loadError: string|null }}
+ */
+async function fetchVoteTallyJson() {
+  const actions = ["voteTally", "voteSummary"];
+  const maxAttempts = 3;
+  const retryDelayMs = 1200;
+  const timeoutMs = 20000;
+  let lastParseFail = /** @type {{ status: number, preview: string } | null} */ (null);
+  let sawRunningOnly = false;
+
+  for (const action of actions) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, retryDelayMs));
+      const url = new URL(API_BASE);
+      url.searchParams.set("action", action);
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        const res = await fetch(url.toString(), {
+          method: "GET",
+          redirect: "follow",
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timer));
+        const text = await res.text();
+        const json = parseJsonLenient(text);
+        if (json == null) {
+          lastParseFail = {
+            status: res.status,
+            preview: text.replace(/\s+/g, " ").slice(0, 140),
+          };
+          break;
+        }
+        if (!res.ok) {
+          return { json, loadError: null };
+        }
+        if (isRunningOnlyResponse(json)) {
+          sawRunningOnly = true;
+          continue;
+        }
+        return { json, loadError: null };
+      } catch (e) {
+        const isAbort = e?.name === "AbortError";
+        return {
+          json: null,
+          loadError: isAbort
+            ? "요청 시간이 초과되었습니다. 네트워크 후 다시 시도해 주세요."
+            : `연결 오류: ${String(e?.message || e)}`,
+        };
+      }
+    }
+  }
+  if (lastParseFail) {
+    return {
+      json: null,
+      loadError: `집계 응답을 JSON으로 읽을 수 없습니다. (HTTP ${lastParseFail.status}${lastParseFail.preview ? ` · ${lastParseFail.preview}…` : ""})`,
+    };
+  }
+  if (sawRunningOnly) {
+    return {
+      json: null,
+      loadError:
+        "서버가 계속 준비 중(status: running)만 반환합니다. Apps Script를 새 버전으로 배포했는지 확인해 주세요.",
+    };
+  }
+  return {
+    json: null,
+    loadError:
+      "집계 요청이 비어 있는 응답으로 끝났습니다. API URL(API_BASE)과 웹앱 배포를 확인해 주세요.",
+  };
+}
+
 function isRunningOnlyResponse(data) {
   if (data == null || typeof data !== "object" || Array.isArray(data)) return false;
   if (data.tree != null || data.root != null) return false;
@@ -803,6 +911,12 @@ function isRunningOnlyResponse(data) {
     "members",
     "문중원",
     "people",
+    "notices",
+    "property",
+    "properties",
+    "voteResponse",
+    "history",
+    "movements",
   ];
   return !listKeys.some((k) => Array.isArray(data[k]) && data[k].length > 0);
 }
@@ -3004,12 +3118,14 @@ async function apiGet(params, opts = {}) {
       signal: controller.signal,
     }).finally(() => clearTimeout(t));
     const text = await res.text();
-    let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
+    const json = parseApiJson(text);
+    if (json == null) {
       throw new Error(
-        "서버 응답이 JSON이 아닙니다. Apps Script에서 JSON으로 반환하는지 확인하세요."
+        "서버 응답이 JSON이 아닙니다. (" +
+          String(text || "")
+            .replace(/\s+/g, " ")
+            .slice(0, 120) +
+          "…)"
       );
     }
     if (!res.ok) {
@@ -3045,7 +3161,8 @@ async function apiGetSilent(params, opts = {}) {
         signal: controller.signal,
       }).finally(() => clearTimeout(t));
       const text = await res.text();
-      const json = JSON.parse(text);
+      const json = parseApiJson(text);
+      if (json == null) return null;
       if (!res.ok) return null;
       if (!isRunningOnlyResponse(json)) return json;
     } catch {
@@ -3448,7 +3565,7 @@ function renderVoteTallyBarGroup(container, sectionTitle, rows) {
   });
 }
 
-function renderVoteTallyPanel(json, proEl, opEl, statusEl) {
+function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
   if (statusEl) statusEl.textContent = "";
   if (!proEl || !opEl) return;
 
@@ -3457,6 +3574,7 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl) {
     renderVoteTallyBarGroup(opEl, "의견·항목 선택", []);
     if (statusEl) {
       statusEl.textContent =
+        loadError ||
         "집계를 불러오지 못했습니다. Google Apps Script에 action=voteTally 분기가 있고 최신 웹앱이 배포되어 있는지 확인해 주세요.";
     }
     return;
@@ -3505,10 +3623,8 @@ async function loadVoteTallyPanel() {
   if (!proEl || !opEl) return;
   if (statusEl) statusEl.textContent = "집계 불러오는 중…";
 
-  let json = await apiGetSilent({ action: "voteTally" });
-  if (!json) json = await apiGetSilent({ action: "voteSummary" });
-
-  renderVoteTallyPanel(json, proEl, opEl, statusEl);
+  const { json, loadError } = await fetchVoteTallyJson();
+  renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError);
 }
 
 /** 아천문중 탭: 정관·재산·공지 + 구글 폼 투표 임베드 */
