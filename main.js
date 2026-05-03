@@ -756,12 +756,12 @@ function showStatus(message, isError = false) {
   const base = "mt-6 rounded-xl border px-4 py-6 text-center text-sm";
   statusArea.className = isError
     ? `${base} border-red-200 bg-red-50 text-red-800`
-    : `${base} border-dashed border-stone-300 bg-white/60 text-stone-600`;
+    : `${base} border-dashed border-wine/40 bg-white/60 text-stone-600`;
 }
 
 function hideStatus() {
   statusArea.className =
-    "mt-6 hidden rounded-xl border border-dashed border-stone-300 bg-white/60 px-4 py-6 text-center text-sm text-stone-600";
+    "mt-6 hidden rounded-xl border border-dashed border-wine/40 bg-white/60 px-4 py-6 text-center text-sm text-stone-600";
   statusArea.textContent = "";
 }
 
@@ -1293,7 +1293,7 @@ function renderSearchResultCard(row, index) {
   const li = document.createElement("li");
   const clanId = getClanMemberId(row, index);
   li.className =
-    "search-result-card cursor-pointer overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-sm ring-1 ring-black/[0.03] transition hover:border-seal/40 hover:shadow-md focus-within:ring-2 focus-within:ring-seal/30";
+    "search-result-card cursor-pointer overflow-hidden rounded-2xl border border-wine/38 bg-white shadow-sm ring-1 ring-black/[0.03] transition hover:border-wine/45 hover:shadow-md focus-within:ring-2 focus-within:ring-wine/25";
   li.setAttribute("role", "button");
   li.setAttribute("tabindex", "0");
   li.dataset.personId = clanId;
@@ -1387,7 +1387,7 @@ function renderResults(rows) {
     if (typeof row !== "object" || row === null) {
       const li = document.createElement("li");
       li.className =
-        "rounded-2xl border border-stone-200 bg-white p-4 text-sm text-stone-700";
+        "rounded-2xl border border-wine/35 bg-white p-4 text-sm text-stone-700";
       li.textContent = String(row);
       fragment.appendChild(li);
     }
@@ -1655,18 +1655,18 @@ function mountEightKinHorizontalTreeSvg(box, opts) {
 
   const toolbar = document.createElement("div");
   toolbar.className =
-    "mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-stone-200/80 pb-2";
+    "mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-wine/36 pb-2";
   toolbar.innerHTML = `
     <span class="text-[11px] text-stone-500">세대별 정렬: 부친 ID 순 → 자녀 ID 순 · 부–자·형제 연결 녹색(seal) · 드래그·휠 확대</span>
     <span class="flex gap-1">
-      <button type="button" class="eight-kin-z rounded border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="in" title="확대">＋</button>
-      <button type="button" class="eight-kin-z rounded border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="out" title="축소">－</button>
-      <button type="button" class="eight-kin-z rounded border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="reset" title="화면 맞춤">맞춤</button>
+      <button type="button" class="eight-kin-z rounded border border-wine/40 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="in" title="확대">＋</button>
+      <button type="button" class="eight-kin-z rounded border border-wine/40 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="out" title="축소">－</button>
+      <button type="button" class="eight-kin-z rounded border border-wine/40 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="reset" title="화면 맞춤">맞춤</button>
     </span>`;
 
   const view = document.createElement("div");
   view.className =
-    "eight-kin-tree-view relative h-[min(76vh,620px)] w-full overflow-hidden rounded-xl border border-stone-200/90 bg-[#fafaf9]";
+    "eight-kin-tree-view relative h-[min(76vh,620px)] w-full overflow-hidden rounded-xl border border-wine/38 bg-[#fafaf9]";
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("width", "100%");
   svg.setAttribute("height", "100%");
@@ -2068,18 +2068,18 @@ function mountEightKinTreeSvg(box, layers, opts = {}) {
 
   const toolbar = document.createElement("div");
   toolbar.className =
-    "mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-stone-200/80 pb-2";
+    "mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-wine/36 pb-2";
   toolbar.innerHTML = `
     <span class="text-[11px] text-stone-500">드래그·휠(또는 트랙패드)로 이동·확대</span>
     <span class="flex gap-1">
-      <button type="button" class="eight-kin-z rounded border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="in" title="확대">＋</button>
-      <button type="button" class="eight-kin-z rounded border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="out" title="축소">－</button>
-      <button type="button" class="eight-kin-z rounded border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="reset" title="화면 맞춤">맞춤</button>
+      <button type="button" class="eight-kin-z rounded border border-wine/40 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="in" title="확대">＋</button>
+      <button type="button" class="eight-kin-z rounded border border-wine/40 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="out" title="축소">－</button>
+      <button type="button" class="eight-kin-z rounded border border-wine/40 bg-white px-2 py-0.5 text-xs font-medium text-stone-700 hover:bg-stone-50" data-act="reset" title="화면 맞춤">맞춤</button>
     </span>`;
 
   const view = document.createElement("div");
   view.className =
-    "eight-kin-tree-view relative h-[min(72vh,560px)] w-full overflow-hidden rounded-xl border border-stone-200/90 bg-[#fafaf9]";
+    "eight-kin-tree-view relative h-[min(72vh,560px)] w-full overflow-hidden rounded-xl border border-wine/38 bg-[#fafaf9]";
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("width", "100%");
   svg.setAttribute("height", "100%");
@@ -2266,7 +2266,7 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
   const fatherDisp = father || (fatherId ? `문중원ID ${fatherId}` : "기록 없음");
 
   const chip = (label) =>
-    `<span class="inline-block max-w-[8rem] truncate rounded-md border border-stone-200 bg-white px-1.5 py-0.5 text-center text-[11px] font-medium text-ink-800">${label}</span>`;
+    `<span class="inline-block max-w-[8rem] truncate rounded-md border border-wine/35 bg-white px-1.5 py-0.5 text-center text-[11px] font-medium text-ink-800">${label}</span>`;
 
   const siblingChips =
     siblingList.length > 0
@@ -2300,7 +2300,7 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
           <div class="mt-0.5 break-words text-sm font-bold leading-snug text-ink-900">${escapeHtml(name)}</div>
           ${sesong ? `<div class="mt-1 text-[10px] leading-tight text-stone-600">${escapeHtml(sesong)}</div>` : ""}
         </div>
-        <div class="min-w-[4.5rem] rounded-xl border border-stone-200 bg-white px-2 py-2 text-center">
+        <div class="min-w-[4.5rem] rounded-xl border border-wine/35 bg-white px-2 py-2 text-center">
           <div class="text-[10px] font-medium text-stone-500">배우자</div>
           <div class="mt-0.5 break-words text-xs font-semibold text-ink-800">${spouse ? escapeHtml(spouse) : '<span class="font-normal text-stone-400">기록 없음</span>'}</div>
         </div>
@@ -2313,7 +2313,7 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
       ? `
     <div class="mt-1 flex flex-col items-center gap-2">
       <div class="h-3 w-px bg-stone-300" aria-hidden="true"></div>
-      <div class="w-full rounded-xl border border-stone-200/90 bg-stone-50/80 px-2 py-2">
+      <div class="w-full rounded-xl border border-wine/38 bg-stone-50/80 px-2 py-2">
         ${
           childrenList.length
             ? `<p class="mb-1.5 text-center text-[10px] font-medium text-stone-500">자녀</p>
@@ -2334,11 +2334,11 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
 
       <div class="flex flex-col items-center gap-0">
         <div class="flex w-full max-w-md items-stretch justify-center gap-3 sm:gap-4">
-          <div class="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center rounded-xl border border-stone-200 bg-stone-50/90 px-2 py-2 text-center">
+          <div class="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center rounded-xl border border-wine/35 bg-stone-50/90 px-2 py-2 text-center">
             <span class="text-[10px] font-medium uppercase tracking-wide text-stone-500">부친</span>
             <span class="mt-0.5 break-words text-xs font-semibold text-ink-900">${escapeHtml(fatherDisp)}</span>
           </div>
-          <div class="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center rounded-xl border border-stone-200 bg-stone-50/90 px-2 py-2 text-center">
+          <div class="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center rounded-xl border border-wine/35 bg-stone-50/90 px-2 py-2 text-center">
             <span class="text-[10px] font-medium uppercase tracking-wide text-stone-500">모친</span>
             <span id="selected-person-mother-val" class="mt-0.5 break-words text-xs font-semibold text-ink-900">${escapeHtml(mother)}</span>
           </div>
@@ -2395,7 +2395,7 @@ function renderEightKinListHome(list) {
     const rel = eightKinItemRelation(item);
     const li = document.createElement("li");
     li.className =
-      "rounded-lg border border-stone-100 bg-stone-50/80 px-3 py-2";
+      "rounded-lg border border-wine/28 bg-stone-50/80 px-3 py-2";
     li.innerHTML = `<span class="font-medium text-ink-900">${escapeHtml(name)}</span>${rel ? ` <span class="text-stone-600">· ${escapeHtml(rel)}</span>` : ""}`;
     listEl.appendChild(li);
   });
@@ -3291,17 +3291,51 @@ function mountClanSheetEditorLinks() {
   }
 }
 
-/** 아천문중 탭: 공지 + 역사 + 투표 */
+/**
+ * 문중원 투표: 구글 폼 편집 → 보내기 → `<>` 에서 복사한 iframe `src` 전체(?embedded=true 포함).
+ * 비우면 폼 대신 안내 문구만 표시합니다.
+ */
+const CLAN_VOTE_GOOGLE_FORM_EMBED_URL =
+  "https://docs.google.com/forms/d/1MfnFqlwwZsRFvtPn4z6M0q-0lDFs4iI0a6q9LnIFNHU/viewform?embedded=true";
+
+function mountClanVoteGoogleForm() {
+  const iframe = document.getElementById("clan-vote-form-embed");
+  const hint = document.getElementById("vote-hint");
+  const fallback = document.getElementById("vote-embed-fallback");
+  const wrap = document.getElementById("vote-embed-wrap");
+  const url = String(CLAN_VOTE_GOOGLE_FORM_EMBED_URL || "").trim();
+  if (!fallback) return;
+  if (!iframe || !wrap) {
+    if (hint) {
+      hint.textContent =
+        "index.html에 투표 iframe(#clan-vote-form-embed) 또는 #vote-embed-wrap이 없습니다.";
+    }
+    return;
+  }
+  if (url) {
+    if (hint) hint.textContent = "아래 양식을 작성해 투표해 주세요.";
+    fallback.classList.add("hidden");
+    fallback.textContent = "";
+    wrap.classList.remove("hidden");
+    iframe.src = url;
+  } else {
+    if (hint) {
+      hint.textContent =
+        "구글 폼 임베드 주소가 아직 설정되지 않았습니다. main.js의 CLAN_VOTE_GOOGLE_FORM_EMBED_URL을 채워 주세요.";
+    }
+    wrap.classList.add("hidden");
+    iframe.removeAttribute("src");
+    fallback.classList.remove("hidden");
+    fallback.textContent =
+      "main.js에서 CLAN_VOTE_GOOGLE_FORM_EMBED_URL에 구글 폼(보내기 → `<>`)에서 복사한 임베드 URL 전체를 넣으면 이곳에 양식이 표시됩니다.";
+  }
+}
+
+/** 아천문중 탭: 정관·재산·공지 + 구글 폼 투표 임베드 */
 async function loadClanTab() {
   mountClanSheetEditorLinks();
-  // 정관(로컬 md) + 재산(property) + 공지(notice) + 투표 응답 시트 + 안건 UI(action=vote)
-  await Promise.all([
-    loadCharterMarkdown(),
-    loadPropertySheet(),
-    loadNoticesSheet(),
-    loadVoteResponseSheet(),
-    loadVoteSection(),
-  ]);
+  mountClanVoteGoogleForm();
+  await Promise.all([loadCharterMarkdown(), loadPropertySheet(), loadNoticesSheet()]);
 }
 
 function renderHomeNotices(data) {
@@ -3321,7 +3355,7 @@ function renderHomeNotices(data) {
   items.slice(0, 3).forEach((n) => {
     const li = document.createElement("li");
     li.className =
-      "rounded-xl border border-stone-200 bg-white/70 px-3 py-2.5";
+      "rounded-xl border border-wine/35 bg-white/70 px-3 py-2.5";
     const title = String(n.title ?? n.subject ?? n.heading ?? "제목 없음");
     const date = String(n.date ?? n.writtenAt ?? n.createdAt ?? "");
     li.innerHTML = `
@@ -3348,150 +3382,6 @@ async function loadHomeNotices() {
     }
   }
   if (json) renderHomeNotices(json);
-}
-
-async function apiPostForm(params) {
-  const body = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v != null && v !== "") body.set(k, String(v));
-  });
-  const res = await fetch(API_BASE, {
-    method: "POST",
-    body,
-    redirect: "follow",
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { ok: false, message: text.slice(0, 200) };
-  }
-  return { ok: res.ok, json };
-}
-
-let lastVoteContext = null;
-
-function normalizeVotePayload(data) {
-  if (!data || typeof data !== "object") return null;
-  const v = data.vote ?? data.agenda ?? data;
-  const title = String(v.title ?? v.question ?? v.subject ?? "").trim();
-  const agendaId = v.agendaId ?? v.id ?? v.agenda_id ?? "1";
-  const options = v.options ?? v.choices ?? v.items;
-  const votes = v.votes ?? v.counts ?? v.tally;
-  if (!Array.isArray(options) || options.length === 0) return null;
-  const voteArr = Array.isArray(votes) ? votes : [];
-  return { title: title || "투표", agendaId: String(agendaId), options, votes: voteArr };
-}
-
-/** 안건·버튼 UI (구버전: #vote-body 단일 영역 호환) */
-function elVoteInteractive() {
-  return document.getElementById("vote-interactive") || document.getElementById("vote-body");
-}
-
-/** 시트 기반 응답 목록 마크다운 */
-function elVoteResponses() {
-  return document.getElementById("vote-responses-md") || document.getElementById("vote-body");
-}
-
-function renderVoteSection(data) {
-  const hint = document.getElementById("vote-hint");
-  const body = elVoteInteractive();
-  if (!body) return;
-
-  lastVoteContext = null;
-  const normalized = normalizeVotePayload(data);
-  if (!normalized) {
-    if (hint) {
-      hint.textContent =
-        "API action=vote 로 안건·선택지·득표수 배열을 주면 표시됩니다. 제출은 action=voteSubmit 입니다.";
-    }
-    body.innerHTML =
-      '<p class="text-sm more-bento-empty">진행 중인 투표가 없습니다.</p>';
-    return;
-  }
-
-  lastVoteContext = {
-    agendaId: normalized.agendaId,
-    options: normalized.options.map((o) => String(o)),
-  };
-  if (hint) hint.textContent = "이름 입력 후 항목별 투표를 누르세요.";
-  body.innerHTML = "";
-  const h4 = document.createElement("h4");
-  h4.className = "more-bento-h4 font-semibold text-[#1a2e2e]";
-  h4.textContent = normalized.title;
-  body.appendChild(h4);
-
-  normalized.options.forEach((opt, i) => {
-    const count = Number(normalized.votes[i] ?? 0) || 0;
-    const row = document.createElement("div");
-    row.className =
-      "more-bento-vote-row flex flex-wrap items-center gap-2 border border-[#1a2e2e]/22 bg-[#faf8f3] px-3 py-2";
-    const label = document.createElement("span");
-    label.className = "min-w-0 flex-1 text-sm text-ink-800";
-    label.textContent = String(opt);
-    const meta = document.createElement("span");
-    meta.className = "text-xs text-stone-500";
-    meta.textContent = `${count}표`;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className =
-      "rounded-lg bg-seal px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#14532d]";
-    btn.textContent = "투표";
-    btn.addEventListener("click", () => void submitVoteOption(i));
-    row.appendChild(label);
-    row.appendChild(meta);
-    row.appendChild(btn);
-    body.appendChild(row);
-  });
-}
-
-async function submitVoteOption(optionIndex) {
-  const nameInput = document.getElementById("vote-voter-name");
-  const voterName = nameInput?.value?.trim();
-  if (!voterName) {
-    window.alert("투표자 이름(또는 문중원 ID)을 입력해 주세요.");
-    return;
-  }
-  if (!lastVoteContext) return;
-
-  const opinion = String(document.getElementById("vote-opinion")?.value ?? "").trim();
-  const selectedOptionLabel = String(
-    lastVoteContext.options?.[optionIndex] ?? ""
-  ).trim();
-  /** 시트 열 `찬반`과 동일 값이면 GAS에서 그대로 기록하면 됩니다. */
-  const proCon = selectedOptionLabel;
-
-  const { ok, json } = await apiPostForm({
-    action: "voteSubmit",
-    agendaId: lastVoteContext.agendaId,
-    voterName,
-    selectedOption: String(optionIndex),
-    selectedOptionLabel,
-    opinion,
-    proCon,
-  });
-
-  const success =
-    ok &&
-    json &&
-    json.success !== false &&
-    json.ok !== false &&
-    json.error == null;
-  if (success) {
-    window.alert(String(json.message || "투표가 반영되었습니다."));
-    await loadVoteSection();
-    await loadVoteResponseSheet();
-  } else {
-    window.alert(
-      String(json?.message || json?.error || "투표 처리에 실패했습니다.")
-    );
-  }
-}
-
-async function loadVoteSection() {
-  const voteJson = await apiGetSilent({ action: "vote" });
-  renderVoteSection(voteJson);
 }
 
 function renderMoreHistory(data) {
@@ -5310,136 +5200,6 @@ async function loadNoticesSheet() {
   setMoreCollapsed("more-notice", true);
 }
 
-function normalizeVoteResponsePayload(json) {
-  if (!json || typeof json !== "object") return [];
-  if (json.status === "error") return [];
-  const items = normalizeList(json, ["voteRespone", "voteResponse", "responses", "data", "items", "list", "rows"]);
-  return Array.isArray(items) ? items : [];
-}
-
-/** 시트 1행 헤더가 한글일 때(타임스탬프, 문중원ID…), JSON 키가 헤더와 같다고 가정해 읽습니다. */
-function pickVoteSheetCell(row, keys) {
-  if (!row || typeof row !== "object") return "";
-  const entries = Object.entries(row).map(([k, v]) => [String(k).trim(), v]);
-  for (const want of keys) {
-    const w = String(want).trim();
-    for (const [k, v] of entries) {
-      if (k !== w) continue;
-      const s = String(v ?? "").trim();
-      if (s) return s;
-    }
-  }
-  return "";
-}
-
-function voteResponsesToMarkdown(items) {
-  if (!items || !items.length) return "";
-  const lines = ["## 투표 응답", ""];
-  items.slice(0, 200).forEach((it, i) => {
-    const ts = pickVoteSheetCell(it, [
-      "타임스탬프",
-      "timestamp",
-      "date",
-      "time",
-      "createdAt",
-      "일시",
-    ]);
-    const name =
-      pickVoteSheetCell(it, [
-        "문중원ID (또는 성함)",
-        "문중원ID",
-        "name",
-        "voterName",
-        "이름",
-        "투표자",
-      ]) ||
-      String(it.name ?? it.voterName ?? it.이름 ?? it.투표자 ?? "").trim();
-    const opinion = pickVoteSheetCell(it, ["의견", "opinion", "memo", "비고"]);
-    const proCon = pickVoteSheetCell(it, ["찬반", "proCon", "찬반여부"]);
-    const agendaNo = pickVoteSheetCell(it, ["안건번호", "agendaId", "안건"]);
-    const itemPick = pickVoteSheetCell(it, [
-      "항목/의견 선택",
-      "항목",
-      "selectedOptionLabel",
-      "option",
-      "choice",
-      "selectedOption",
-      "선택",
-      "응답",
-    ]);
-    const opt =
-      itemPick ||
-      String(it.option ?? it.choice ?? it.selectedOption ?? it.선택 ?? it.응답 ?? "").trim();
-    const date =
-      ts ||
-      String(it.date ?? it.time ?? it.createdAt ?? it.일시 ?? "").trim();
-    const parts = [
-      name || "문중원",
-      agendaNo ? `안건 ${agendaNo}` : "",
-      proCon ? `찬반 ${proCon}` : "",
-      opt ? `선택 ${opt}` : "",
-      opinion ? `의견: ${opinion}` : "",
-      date ? `(${date})` : "",
-    ].filter(Boolean);
-    const head = parts.join(" · ");
-    lines.push(`- ${head || `응답 ${i + 1}`}`);
-  });
-  lines.push("");
-  return lines.join("\n");
-}
-
-async function loadVoteResponseSheet() {
-  const hint = document.getElementById("vote-hint");
-  const body = elVoteResponses();
-  if (!body) return;
-  if (hint) hint.textContent = "API action=voteResponse (시트: voteResponse) · 호환: voteRespone";
-  body.innerHTML = `<p class="text-sm text-stone-500">불러오는 중…</p>`;
-  if (isFileProtocol()) {
-    body.innerHTML =
-      `<p class="more-bento-empty text-sm">현재 <code class="text-xs">file://</code>로 열려 있어 API 호출이 차단될 수 있습니다. ` +
-      `정적 서버로 열어 주세요.</p>`;
-    setMoreCollapsed("more-vote", true);
-    return;
-  }
-  let json = null;
-  try {
-    json = await apiGetWait(
-      { action: "voteResponse", limit: "200" },
-      { hintEl: hint, maxAttempts: 10 }
-    );
-  } catch {
-    // ignore
-  }
-  if (!json) {
-    try {
-      json = await apiGetWait(
-        { action: "voteRespone", limit: "200" },
-        { hintEl: hint, maxAttempts: 10 }
-      );
-      if (hint) hint.textContent = "API action=voteRespone (호환)";
-    } catch {
-      json = null;
-    }
-  }
-  if (!json) {
-    body.innerHTML =
-      `<p class="more-bento-empty text-sm">투표 응답을 불러오지 못했습니다.</p>` +
-      `<p class="mt-2 text-[11px] text-stone-500">서버가 계속 <code class="text-xs">{\"status\":\"running\"}</code>만 반환하면 Apps Script 배포/권한/분기(action=voteRespone/voteResponse)와 JSON 반환을 확인해 주세요.</p>`;
-    setMoreCollapsed("more-vote", true);
-    return;
-  }
-  if (json.status === "error") {
-    body.innerHTML = `<p class="more-bento-empty text-sm">${escapeHtml(String(json.error || "투표 응답 시트를 불러오지 못했습니다."))}</p>`;
-    setMoreCollapsed("more-vote", true);
-    return;
-  }
-  const items = normalizeVoteResponsePayload(json);
-  const md = items.length ? voteResponsesToMarkdown(items) : "";
-  if (md) renderMarkdownInto(body, md);
-  else body.innerHTML = `<p class="more-bento-empty text-sm">등록된 투표 응답이 없습니다.</p>`;
-  setMoreCollapsed("more-vote", true);
-}
-
 function renderAncestorsLine(people) {
   const line = document.getElementById("ancestors-line");
   if (!line) return;
@@ -5470,7 +5230,7 @@ function renderAncestorsLine(people) {
     if (idx < people.length - 1) {
       const conn = document.createElement("div");
       conn.className =
-        "mx-0.5 mb-1.5 h-0 min-w-[0.55rem] shrink-0 self-end border-t border-dotted border-stone-400 sm:min-w-[0.75rem]";
+        "mx-0.5 mb-1.5 h-0 min-w-[0.55rem] shrink-0 self-end border-t border-dotted border-wine/45 sm:min-w-[0.75rem]";
       conn.setAttribute("aria-hidden", "true");
       row.appendChild(conn);
     }
@@ -6478,7 +6238,7 @@ function ensureGenRangeCompareMounted() {
 
   wrap = document.createElement("section");
   wrap.id = "tree-compare-wrap";
-  wrap.className = "w-full rounded-xl border border-stone-100 bg-white/70";
+  wrap.className = "w-full rounded-xl border border-wine/28 bg-white/70";
   wrap.setAttribute("aria-label", "1-10세 전용 트리(비교용)");
 
   const scroll = document.createElement("div");
@@ -8491,7 +8251,7 @@ function renderGen32DetailPanel(rootId, people) {
   if (dh) dh.textContent = "";
   if (!rootId) {
     if (dh) dh.textContent = "상단 명단에서 한 분을 누르면 이 구역에 가계도 트리로 표시됩니다.";
-    el.innerHTML = `<div class="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-stone-200 bg-stone-50/70 px-4 text-center text-sm text-stone-500">32세 문중원을 선택해 주세요.</div>`;
+    el.innerHTML = `<div class="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-wine/35 bg-stone-50/70 px-4 text-center text-sm text-stone-500">32세 문중원을 선택해 주세요.</div>`;
     return;
   }
   const annotated = annotatePeople(Array.isArray(people) ? people : []);
@@ -8505,7 +8265,7 @@ function renderGen32DetailPanel(rootId, people) {
 
   el.innerHTML = `
     <div class="tree-gen32-pedigree">
-      <div id="tree-gen32-1120-wrap" class="tree-zoom-host relative min-h-[400px] w-full overflow-x-auto overflow-y-visible rounded-xl border border-stone-100 bg-stone-50/80">
+      <div id="tree-gen32-1120-wrap" class="tree-zoom-host relative min-h-[400px] w-full overflow-x-auto overflow-y-visible rounded-xl border border-wine/28 bg-stone-50/80">
         <svg id="tree-gen32-detail-svg" class="h-full w-full" role="img" aria-label="하위 8촌형 가로 연표"></svg>
       </div>
     </div>`;
@@ -10152,7 +9912,7 @@ function renderKinshipDisambig(sections) {
   sections.forEach((sec, si) => {
     const label = sec.slot === 1 ? "①" : "②";
     parts.push(
-      `<p class="mb-1 text-[10px] font-semibold text-stone-600 ${si ? "mt-3 border-t border-stone-200/80 pt-2" : ""}">${label} 동명이인이 있습니다. 해당하는 한 분을 누르면 ID로 바꾼 뒤 다시 계산합니다.</p>`
+      `<p class="mb-1 text-[10px] font-semibold text-stone-600 ${si ? "mt-3 border-t border-wine/36 pt-2" : ""}">${label} 동명이인이 있습니다. 해당하는 한 분을 누르면 ID로 바꾼 뒤 다시 계산합니다.</p>`
     );
     for (const c of sec.candidates) {
       const nm = escapeHtml(pickFirstString(c.row, NAME_KEYS) || "?");
@@ -10160,7 +9920,7 @@ function renderKinshipDisambig(sections) {
       const dad = escapeHtml(formatFatherBrief(c.row));
       const id = escapeHtml(String(c.id));
       parts.push(
-        `<button type="button" class="kinship-pick mb-1.5 block w-full max-w-full rounded-lg border border-stone-300 bg-white px-2.5 py-2 text-left text-[11px] text-ink-800 transition hover:bg-stone-50" data-slot="${sec.slot}" data-id="${id}"><span class="font-semibold">${nm}</span>${ses ? ` · ${ses}` : ""}<span class="text-stone-600"> · 부친 ${dad}</span> · <span class="font-medium text-seal">ID ${id}</span></button>`
+        `<button type="button" class="kinship-pick mb-1.5 block w-full max-w-full rounded-lg border border-wine/40 bg-white px-2.5 py-2 text-left text-[11px] text-ink-800 transition hover:bg-stone-50" data-slot="${sec.slot}" data-id="${id}"><span class="font-semibold">${nm}</span>${ses ? ` · ${ses}` : ""}<span class="text-stone-600"> · 부친 ${dad}</span> · <span class="font-medium text-seal">ID ${id}</span></button>`
       );
     }
   });
@@ -10488,12 +10248,12 @@ async function renderKinshipVisual(id1, id2, keyOpt = "") {
       .map((p) => {
         const nm = pickFirstString(p, NAME_KEYS) || "?";
         const gen = p.gen ?? p.세손 ?? p.generation ?? "";
-        return `<div class="shrink-0 rounded-xl border border-stone-200 bg-white/80 px-3 py-2 text-center">
+        return `<div class="shrink-0 rounded-xl border border-wine/35 bg-white/80 px-3 py-2 text-center">
           <div class="text-xs font-bold text-ink-900">${escapeHtml(nm)}</div>
           ${gen !== "" && gen != null ? `<div class="mt-0.5 text-[11px] text-stone-600">(${escapeHtml(gen)}세손)</div>` : ""}
         </div>`;
       })
-      .join(`<div class="h-px w-8 border-t border-dashed border-stone-400/80"></div>`);
+      .join(`<div class="h-px w-8 border-t border-dashed border-wine/42"></div>`);
 
   wrap.innerHTML = `
     <div class="flex items-stretch gap-3">
