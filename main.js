@@ -2266,7 +2266,7 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
   const fatherDisp = father || (fatherId ? `문중원ID ${fatherId}` : "기록 없음");
 
   const chip = (label) =>
-    `<span class="inline-block max-w-[8rem] truncate rounded-md border border-wine/35 bg-white px-1.5 py-0.5 text-center text-[11px] font-medium text-ink-800">${label}</span>`;
+    `<span class="inline-block max-w-[8rem] truncate rounded-md border border-seal/40 bg-white px-1.5 py-0.5 text-center text-[11px] font-medium text-ink-800">${label}</span>`;
 
   const siblingChips =
     siblingList.length > 0
@@ -2300,7 +2300,7 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
           <div class="mt-0.5 break-words text-sm font-bold leading-snug text-ink-900">${escapeHtml(name)}</div>
           ${sesong ? `<div class="mt-1 text-[10px] leading-tight text-stone-600">${escapeHtml(sesong)}</div>` : ""}
         </div>
-        <div class="min-w-[4.5rem] rounded-xl border border-wine/35 bg-white px-2 py-2 text-center">
+        <div class="min-w-[4.5rem] rounded-xl border border-seal/40 bg-white px-2 py-2 text-center">
           <div class="text-[10px] font-medium text-stone-500">배우자</div>
           <div class="mt-0.5 break-words text-xs font-semibold text-ink-800">${spouse ? escapeHtml(spouse) : '<span class="font-normal text-stone-400">기록 없음</span>'}</div>
         </div>
@@ -2313,7 +2313,7 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
       ? `
     <div class="mt-1 flex flex-col items-center gap-2">
       <div class="h-3 w-px bg-stone-300" aria-hidden="true"></div>
-      <div class="w-full rounded-xl border border-wine/38 bg-stone-50/80 px-2 py-2">
+      <div class="w-full rounded-xl border border-seal/38 bg-stone-50/80 px-2 py-2">
         ${
           childrenList.length
             ? `<p class="mb-1.5 text-center text-[10px] font-medium text-stone-500">자녀</p>
@@ -2334,11 +2334,11 @@ function renderSelectedPersonBody(mergedRow, clanMemberId) {
 
       <div class="flex flex-col items-center gap-0">
         <div class="flex w-full max-w-md items-stretch justify-center gap-3 sm:gap-4">
-          <div class="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center rounded-xl border border-wine/35 bg-stone-50/90 px-2 py-2 text-center">
+          <div class="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center rounded-xl border border-seal/40 bg-stone-50/90 px-2 py-2 text-center">
             <span class="text-[10px] font-medium uppercase tracking-wide text-stone-500">부친</span>
             <span class="mt-0.5 break-words text-xs font-semibold text-ink-900">${escapeHtml(fatherDisp)}</span>
           </div>
-          <div class="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center rounded-xl border border-wine/35 bg-stone-50/90 px-2 py-2 text-center">
+          <div class="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center rounded-xl border border-seal/40 bg-stone-50/90 px-2 py-2 text-center">
             <span class="text-[10px] font-medium uppercase tracking-wide text-stone-500">모친</span>
             <span id="selected-person-mother-val" class="mt-0.5 break-words text-xs font-semibold text-ink-900">${escapeHtml(mother)}</span>
           </div>
