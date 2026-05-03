@@ -3372,10 +3372,150 @@ function mountClanVoteGoogleForm() {
   }
 }
 
+let voteTallyRefreshBound = false;
+
+/** voteResponse 집계 API → { proCon, opinionChoice } 객체 또는 배열 행 */
+function normalizeVoteTallyRows(raw) {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) {
+    const out = [];
+    for (const row of raw) {
+      if (Array.isArray(row) && row.length >= 2) {
+        out.push({
+          label: String(row[0]).trim(),
+          count: Math.max(0, Number(row[1]) || 0),
+        });
+      } else if (row && typeof row === "object") {
+        const label = String(row.label ?? row.key ?? row.name ?? "").trim();
+        const count = Math.max(0, Number(row.count ?? row.n ?? row.value) || 0);
+        if (label) out.push({ label, count });
+      }
+    }
+    return out;
+  }
+  if (typeof raw === "object") {
+    return Object.entries(raw)
+      .map(([label, count]) => ({
+        label: String(label).trim(),
+        count: Math.max(0, Number(count) || 0),
+      }))
+      .filter((x) => x.label);
+  }
+  return [];
+}
+
+function sortTallyByCountDesc(rows) {
+  const copy = rows.slice();
+  copy.sort((a, b) => b.count - a.count);
+  return copy;
+}
+
+const VOTE_TALLY_BAR_COLORS = ["bg-wine/90", "bg-seal/85", "bg-emerald-800/80"];
+
+function renderVoteTallyBarGroup(container, sectionTitle, rows) {
+  if (!container) return;
+  container.innerHTML = "";
+  const head = document.createElement("div");
+  head.className =
+    "mb-1.5 text-[10px] font-bold uppercase tracking-wide text-stone-500";
+  head.textContent = sectionTitle;
+  container.appendChild(head);
+  const list = sortTallyByCountDesc(rows);
+  const total = list.reduce((s, r) => s + r.count, 0);
+  if (!list.length) {
+    const p = document.createElement("p");
+    p.className = "text-[11px] text-stone-500";
+    p.textContent = "응답 없음";
+    container.appendChild(p);
+    return;
+  }
+  list.forEach((row, i) => {
+    const pct = total > 0 ? Math.round((row.count / total) * 1000) / 10 : 0;
+    const w = total > 0 ? Math.max(2, Math.round((row.count / total) * 10000) / 100) : 0;
+    const barColor = VOTE_TALLY_BAR_COLORS[i % VOTE_TALLY_BAR_COLORS.length];
+    const rowEl = document.createElement("div");
+    rowEl.className = "mb-2 last:mb-0";
+    rowEl.innerHTML = `
+      <div class="flex justify-between gap-2 text-[11px] text-ink-900">
+        <span class="min-w-0 truncate">${escapeHtml(row.label)}</span>
+        <span class="shrink-0 tabular-nums text-stone-600">${row.count} <span class="text-stone-400">(${pct}%)</span></span>
+      </div>
+      <div class="mt-0.5 h-2 overflow-hidden rounded-full bg-stone-200/90">
+        <div class="h-full rounded-full ${barColor}" style="width:${w}%"></div>
+      </div>
+    `;
+    container.appendChild(rowEl);
+  });
+}
+
+function renderVoteTallyPanel(json, proEl, opEl, statusEl) {
+  if (statusEl) statusEl.textContent = "";
+  if (!proEl || !opEl) return;
+
+  if (!json) {
+    renderVoteTallyBarGroup(proEl, "찬반", []);
+    renderVoteTallyBarGroup(opEl, "의견·항목 선택", []);
+    if (statusEl) {
+      statusEl.textContent =
+        "집계를 불러오지 못했습니다. Google Apps Script에 action=voteTally 분기가 있고 최신 웹앱이 배포되어 있는지 확인해 주세요.";
+    }
+    return;
+  }
+
+  const st = String(json.status ?? "").toLowerCase();
+  if (st === "error") {
+    renderVoteTallyBarGroup(proEl, "찬반", []);
+    renderVoteTallyBarGroup(opEl, "의견·항목 선택", []);
+    if (statusEl) statusEl.textContent = String(json.error || json.message || "오류");
+    return;
+  }
+  if (json.ok === false) {
+    renderVoteTallyBarGroup(proEl, "찬반", []);
+    renderVoteTallyBarGroup(opEl, "의견·항목 선택", []);
+    if (statusEl) {
+      statusEl.textContent = String(
+        json.message || json.error || "집계에 실패했습니다."
+      );
+    }
+    return;
+  }
+
+  const proRows = normalizeVoteTallyRows(json.proCon);
+  const opRows = normalizeVoteTallyRows(json.opinionChoice);
+  renderVoteTallyBarGroup(proEl, "찬반", proRows);
+  renderVoteTallyBarGroup(opEl, "의견·항목 선택", opRows);
+
+  const proTotal = proRows.reduce((s, r) => s + r.count, 0);
+  const opTotal = opRows.reduce((s, r) => s + r.count, 0);
+  if (statusEl && !proTotal && !opTotal) {
+    statusEl.textContent =
+      "아직 집계된 응답이 없거나, 시트 열(찬반·항목)과 구글 폼 필드가 맞지 않을 수 있습니다.";
+  }
+}
+
+async function loadVoteTallyPanel() {
+  const proEl = document.getElementById("vote-tally-procon");
+  const opEl = document.getElementById("vote-tally-opinion");
+  const statusEl = document.getElementById("vote-tally-status");
+  const refreshBtn = document.getElementById("vote-tally-refresh");
+  if (!voteTallyRefreshBound && refreshBtn) {
+    voteTallyRefreshBound = true;
+    refreshBtn.addEventListener("click", () => void loadVoteTallyPanel());
+  }
+  if (!proEl || !opEl) return;
+  if (statusEl) statusEl.textContent = "집계 불러오는 중…";
+
+  let json = await apiGetSilent({ action: "voteTally" });
+  if (!json) json = await apiGetSilent({ action: "voteSummary" });
+
+  renderVoteTallyPanel(json, proEl, opEl, statusEl);
+}
+
 /** 아천문중 탭: 정관·재산·공지 + 구글 폼 투표 임베드 */
 async function loadClanTab() {
   mountClanSheetEditorLinks();
   mountClanVoteGoogleForm();
+  void loadVoteTallyPanel();
   await Promise.all([loadCharterMarkdown(), loadPropertySheet(), loadNoticesSheet()]);
 }
 
@@ -4964,7 +5104,7 @@ function initMoreExpanders() {
 
   if (!host || !modal || !modalBody || !modalTitle || !closeBtn) return;
 
-  let moved = null; // { key, node, placeholder, wasCollapsed, btn }
+  let moved = null; // { key, node, placeholder, wasCollapsed, btn, tally?, tallyPlaceholder? }
 
   const applyModalOffsets = () => {
     const hdr = document.getElementById("app-header");
@@ -4980,11 +5120,14 @@ function initMoreExpanders() {
       modal.setAttribute("aria-hidden", "true");
       return;
     }
-    const { node, placeholder, wasCollapsed, btn } = moved;
+    const { node, placeholder, wasCollapsed, btn, tally, tallyPlaceholder } = moved;
     try {
       const parent = placeholder?.parentNode;
       if (parent && node) parent.insertBefore(node, placeholder);
+      const tp = tallyPlaceholder?.parentNode;
+      if (tp && tally) tp.insertBefore(tally, tallyPlaceholder);
       placeholder?.remove?.();
+      tallyPlaceholder?.remove?.();
     } catch {
       // ignore
     }
@@ -5009,10 +5152,21 @@ function initMoreExpanders() {
     const placeholder = document.createElement("div");
     placeholder.setAttribute("data-more-fullscreen-placeholder", key);
     node.parentNode?.insertBefore(placeholder, node);
+    let tally = null;
+    let tallyPlaceholder = null;
+    if (key === "more-vote") {
+      tally = document.getElementById("vote-tally-wrap");
+      if (tally?.parentNode) {
+        tallyPlaceholder = document.createElement("div");
+        tallyPlaceholder.setAttribute("data-more-fullscreen-placeholder", "vote-tally");
+        tally.parentNode.insertBefore(tallyPlaceholder, tally);
+      }
+    }
     modalBody.appendChild(node);
+    if (tally) modalBody.appendChild(tally);
 
     btn.setAttribute("aria-expanded", "true");
-    moved = { key, node, placeholder, wasCollapsed, btn };
+    moved = { key, node, placeholder, wasCollapsed, btn, tally, tallyPlaceholder };
     applyModalOffsets();
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");

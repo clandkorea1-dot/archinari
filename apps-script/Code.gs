@@ -1,7 +1,7 @@
 /**
  * 의성김씨 아천문중 세보 - 통합 엔진 (로컬 apps-script/Code.gs 백업본)
  * - search / person(getDetail) / getTree / kinship / eightKin
- * - notice / property / voteResponse
+ * - notice / property / voteResponse / voteTally (응답 시트 D·F열 집계)
  * - genRange(min,max): 1-10세 전용 트리 데이터 (형제 포함)
  * - vote: 안건 JSON (Script Properties 또는 voteAgenda 시트)
  * - history / movements: 시트 history, movements
@@ -33,6 +33,7 @@ function doGet(e) {
     else if (action === "property") result = getPropertyList(p); // 시트: property
     else if (action === "voteResponse") result = getVoteResponseList(p); // 시트: voteResponse
     else if (action === "voteRespone") result = getVoteResponseList(p); // 오타 호환(같은 결과)
+    else if (action === "voteTally" || action === "voteSummary") result = getVoteTally_(p); // voteResponse D·F열 집계
     // 가계도 1-10세 전용 데이터
     else if (action === "genRange") result = getGenRange(p); // people 시트에서 세손 구간(+형제)
     // PWA: 문중원투표 안건 / 연혁 / 지도 마커
@@ -74,6 +75,43 @@ function doPost(e) {
  * 타임스탬프 | 문중원ID (또는 성함) | 의견 | 찬반 | 안건번호 | 항목/의견 선택
  * append 순서는 위와 동일 (타임스탬프는 서버에서 new Date()).
  */
+/**
+ * GET action=voteTally (또는 voteSummary)
+ * 시트 voteResponse: D열 찬반, F열 항목/의견 선택 (1행 헤더, 2행부터 데이터).
+ * 선택: agendaId 쿼리가 있으면 E열(안건번호)과 일치하는 행만 집계.
+ */
+function getVoteTally_(p) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName("voteResponse");
+  if (!sh) {
+    return {
+      ok: false,
+      error: "시트 'voteResponse'를 찾을 수 없습니다.",
+      proCon: {},
+      opinionChoice: {},
+      sheet: "voteResponse",
+    };
+  }
+  const agendaFilter = String((p && p.agendaId) || "").trim();
+  const data = sh.getDataRange().getValues();
+  const proCon = {};
+  const opinionChoice = {};
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    if (agendaFilter && String(row[4] || "").trim() !== agendaFilter) continue;
+    var pc = String(row[3] || "").trim();
+    var oc = String(row[5] || "").trim();
+    if (pc) proCon[pc] = (proCon[pc] || 0) + 1;
+    if (oc) opinionChoice[oc] = (opinionChoice[oc] || 0) + 1;
+  }
+  return {
+    ok: true,
+    proCon: proCon,
+    opinionChoice: opinionChoice,
+    sheet: "voteResponse",
+  };
+}
+
 function handleVoteSubmit_(p) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName("voteResponse");

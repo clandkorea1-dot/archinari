@@ -2674,3 +2674,7 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
 #view-more #vote-body {
   scroll-margin-top: 6.25rem;
 }
+
+#view-more #vote-tally-wrap {
+  scroll-margin-top: 6.25rem;
+}
