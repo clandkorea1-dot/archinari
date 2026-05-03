@@ -3453,13 +3453,14 @@ const CLAN_VOTE_GOOGLE_FORM_EMBED_URL =
 
 /**
  * 구글 설문 응답 시트 열(문서용). 실제 집계는 Apps Script 속성 VOTE_TALLY_COL_* 가 우선.
- * 폼 연동 탭 예: 「설문지 응답 시트6」— B=항목/의견 선택, D=찬반 이면 아래와 같음.
+ * 예: B=질문 ID, C=선택지 응답, D=찬반 — 표시 문장은 서버가 questionSentence 로 내려줌(VOTE_QUESTION_TEXT_JSON 등).
  */
 const CLAN_VOTE_RESPONSE_SHEET_COL = {
   /** 찬반(찬성·반대) */
   proCon: "D",
-  /** 항목 / 의견 선택 */
-  opinionChoice: "B",
+  /** 질문 ID(B)·선택지 집계 열(C)은 서버 전용 열 번호 속성 참고 */
+  questionId: "B",
+  choice: "C",
 };
 
 function mountClanVoteGoogleForm() {
@@ -3589,15 +3590,21 @@ function renderVoteTallyProConVerticalBars(container, rows) {
   container.appendChild(bars);
 }
 
-/** 우측: B열 선택 항목을 가로로 나열, 문장 끝에 (인원) */
-function renderVoteTallyOpinionHorizontal(container, rows) {
+/**
+ * 우측: 서버가 내려준 질문 문장(questionSentence) + 선택지별 (인원).
+ * API opinionChoice 는 응답 시트의 선택 열(기본 C) 값을 집계한 것이며, 라벨은 더 이상 B열이 아님.
+ */
+function renderVoteTallyOpinionHorizontal(container, rows, questionSentence) {
   if (!container) return;
   container.innerHTML = "";
-  const head = document.createElement("div");
-  head.className =
-    "mb-1.5 text-[10px] font-bold uppercase tracking-wide text-stone-500 sm:text-right";
-  head.textContent = "항목·의견 선택";
-  container.appendChild(head);
+  const title = String(questionSentence ?? "").trim();
+  if (title) {
+    const head = document.createElement("div");
+    head.className =
+      "mb-2 text-[11px] font-semibold leading-snug text-ink-900 sm:text-right";
+    head.textContent = title;
+    container.appendChild(head);
+  }
 
   const list = sortTallyByCountDesc(rows);
   if (!list.length) {
@@ -3644,7 +3651,7 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
   if (!json) {
     setVoteTallyAgendaHint(null);
     renderVoteTallyProConVerticalBars(proEl, []);
-    renderVoteTallyOpinionHorizontal(opEl, []);
+    renderVoteTallyOpinionHorizontal(opEl, [], "");
     if (statusEl) {
       statusEl.textContent =
         loadError ||
@@ -3657,14 +3664,14 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
   if (st === "error") {
     setVoteTallyAgendaHint(null);
     renderVoteTallyProConVerticalBars(proEl, []);
-    renderVoteTallyOpinionHorizontal(opEl, []);
+    renderVoteTallyOpinionHorizontal(opEl, [], "");
     if (statusEl) statusEl.textContent = String(json.error || json.message || "오류");
     return;
   }
   if (json.ok === false) {
     setVoteTallyAgendaHint(null);
     renderVoteTallyProConVerticalBars(proEl, []);
-    renderVoteTallyOpinionHorizontal(opEl, []);
+    renderVoteTallyOpinionHorizontal(opEl, [], "");
     if (statusEl) {
       statusEl.textContent = String(
         json.message || json.error || "집계에 실패했습니다."
@@ -3676,14 +3683,15 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
   setVoteTallyAgendaHint(json);
   const proRows = normalizeVoteTallyRows(json.proCon);
   const opRows = normalizeVoteTallyRows(json.opinionChoice);
+  const questionSentence = String(json.questionSentence ?? "").trim();
   renderVoteTallyProConVerticalBars(proEl, proRows);
-  renderVoteTallyOpinionHorizontal(opEl, opRows);
+  renderVoteTallyOpinionHorizontal(opEl, opRows, questionSentence);
 
   const proTotal = proRows.reduce((s, r) => s + r.count, 0);
   const opTotal = opRows.reduce((s, r) => s + r.count, 0);
   if (statusEl && !proTotal && !opTotal) {
     statusEl.textContent =
-      "아직 집계된 응답이 없거나, 시트 열(찬반·항목)과 구글 폼 필드가 맞지 않을 수 있습니다.";
+      "아직 집계된 응답이 없거나, 시트 열(찬반·선택·질문 ID)과 구글 폼 필드가 맞지 않을 수 있습니다.";
   }
 }
 

@@ -1,7 +1,7 @@
 /**
  * 의성김씨 아천문중 세보 - 통합 엔진 (로컬 apps-script/Code.gs 백업본)
  * - search / person(getDetail) / getTree / kinship / eightKin
- * - notice / property / voteResponse / voteTally (열은 속성 B/D 등; 안건 열 있으면 최신 안건 1건만 집계)
+ * - notice / property / voteResponse / voteTally (B=질문 ID·C=선택 집계 등; 안건 열 있으면 최신 안건 1건·최신 질문 ID 반영)
  * - genRange(min,max): 1-10세 전용 트리 데이터 (형제 포함)
  * - vote: 안건 JSON (Script Properties 또는 voteAgenda 시트)
  * - history / movements: 시트 history, movements
@@ -100,11 +100,14 @@ function getSpreadsheetForVoteTally_() {
  * 안건 번호 열(VOTE_TALLY_COL_AGENDA)에 값이 하나라도 있으면, 타임스탬프 열(A 기본)이
  * 가장 늦은 행의 안건 번호만 집계한다(쿼리 agendaId 가 없을 때). 안건 열이 모두 비어 있으면 전체 행 집계(구버전 호환).
  *
- * 예) 탭「설문지 응답 시트6」: B=항목/의견 선택, D=찬성/반대 →
- *   VOTE_RESPONSE_SHEET_NAME = 설문지 응답 시트6
- *   VOTE_TALLY_COL_OPINION = 2   (B)
- *   VOTE_TALLY_COL_PRO = 4       (D)
- *   VOTE_TALLY_COL_TIMESTAMP = 1 (A, 최신 안건 판별용 — 생략 시 1)
+ * 예) B열=질문 ID, C열=선택지 응답, D열=찬반, E열=안건 번호 →
+ *   VOTE_TALLY_COL_QUESTION_ID = 2   (B, 타임스탬프 기준 최신 행의 ID → 질문 문장 표시)
+ *   VOTE_TALLY_COL_CHOICE = 3          (C, 선택지별 인원 집계)
+ *   VOTE_TALLY_COL_PRO = 4             (D)
+ *   VOTE_TALLY_COL_AGENDA = 5          (E)
+ * 질문 ID → 표시 문장: Script Properties 의 JSON 키 VOTE_QUESTION_TEXT_JSON (예: {"Q1":"문장..."}),
+ *   또는 통합문서 시트 voteQuestionMap (A열 ID, B열 문장). 없으면 선택 열 헤더(1행)를 문장으로 사용.
+ *   VOTE_TALLY_COL_TIMESTAMP = 1 (A, 최신 안건·최신 질문 ID 판별)
  * 통합문서 ID(URL /d/뒤): VOTE_TALLY_SPREADSHEET_ID (스크립트가 이 파일에 안 붙어 있을 때)
  *
  * 구형 수동 시트(voteResponse 탭, D·F열)는 속성 없을 때 기본값과 맞출 수 있음.
@@ -150,21 +153,98 @@ function resolveLatestVoteAgendaId_(data, ixAgenda, ixTime) {
   return "";
 }
 
+/**
+ * 안건 필터가 적용된 범위에서, 타임스탬프가 가장 늦은 행의 질문 ID(B 등).
+ */
+function resolveLatestQuestionIdInScope_(
+  data,
+  ixQid,
+  ixAgenda,
+  ixTime,
+  latestAgendaId,
+  hasAnyAgenda
+) {
+  if (!data || data.length < 2) return "";
+  var bestTime = null;
+  var qidAtBest = "";
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    if (hasAnyAgenda && String(row[ixAgenda] || "").trim() !== latestAgendaId) continue;
+    var t = ixTime >= 0 ? parseVoteTallyCellTime_(row[ixTime]) : null;
+    var qid = String(row[ixQid] || "").trim();
+    if (t != null) {
+      if (bestTime == null || t >= bestTime) {
+        bestTime = t;
+        qidAtBest = qid;
+      }
+    }
+  }
+  if (bestTime != null) return qidAtBest;
+  for (var bottom = data.length - 1; bottom >= 1; bottom--) {
+    var rowB = data[bottom];
+    if (hasAnyAgenda && String(rowB[ixAgenda] || "").trim() !== latestAgendaId) continue;
+    var isEmpty = rowB.every(function (x) {
+      return String(x ?? "").trim() === "";
+    });
+    if (isEmpty) continue;
+    return String(rowB[ixQid] || "").trim();
+  }
+  return "";
+}
+
+/** 질문 ID → 표시용 문장 (JSON 속성, voteQuestionMap 시트, 헤더 폴백) */
+function resolveVoteQuestionSentence_(props, ss, questionId, headerChoiceCol, headerQidCol) {
+  var q = String(questionId || "").trim();
+  try {
+    var raw = props.getProperty("VOTE_QUESTION_TEXT_JSON");
+    if (raw) {
+      var m = JSON.parse(raw);
+      if (m && m[q] != null && String(m[q]).trim()) return String(m[q]).trim();
+    }
+  } catch (e1) {
+    // ignore
+  }
+  try {
+    var shMap = ss.getSheetByName("voteQuestionMap");
+    if (shMap && shMap.getLastRow() >= 2) {
+      var vals = shMap.getDataRange().getValues();
+      for (var i = 1; i < vals.length; i++) {
+        if (String(vals[i][0] || "").trim() === q) {
+          var sent = String(vals[i][1] || "").trim();
+          if (sent) return sent;
+        }
+      }
+    }
+  } catch (e2) {
+    // ignore
+  }
+  if (headerChoiceCol) return headerChoiceCol;
+  if (headerQidCol) return headerQidCol;
+  return q;
+}
+
 function getVoteTally_(p) {
   var props = PropertiesService.getScriptProperties();
   var sheetName = String(props.getProperty("VOTE_RESPONSE_SHEET_NAME") || "voteResponse").trim();
   if (!sheetName) sheetName = "voteResponse";
   var colPro = parseInt(String(props.getProperty("VOTE_TALLY_COL_PRO") || "4"), 10);
-  /* 구글 폼 응답: 항목 선택이 B열인 경우가 많아 기본 2. 수동 voteResponse F열이면 속성에 6 */
-  var colOp = parseInt(String(props.getProperty("VOTE_TALLY_COL_OPINION") || "2"), 10);
+  /* B열=질문 ID, 선택지 집계 열은 VOTE_TALLY_COL_CHOICE (기본 C). 구버전 VOTE_TALLY_COL_OPINION만 있으면 그 열을 선택지로 사용 */
+  var colChoice = parseInt(String(props.getProperty("VOTE_TALLY_COL_CHOICE") || ""), 10);
+  var legacyOp = String(props.getProperty("VOTE_TALLY_COL_OPINION") || "").trim();
+  if (!colChoice || colChoice < 1) {
+    colChoice = legacyOp ? parseInt(legacyOp, 10) || 3 : 3;
+  }
+  var colQid = parseInt(String(props.getProperty("VOTE_TALLY_COL_QUESTION_ID") || "2"), 10);
   var colAgenda = parseInt(String(props.getProperty("VOTE_TALLY_COL_AGENDA") || "5"), 10);
   var colTime = parseInt(String(props.getProperty("VOTE_TALLY_COL_TIMESTAMP") || "1"), 10);
   if (!colPro || colPro < 1) colPro = 4;
-  if (!colOp || colOp < 1) colOp = 2;
+  if (!colChoice || colChoice < 1) colChoice = 3;
+  if (!colQid || colQid < 1) colQid = 2;
   if (!colAgenda || colAgenda < 1) colAgenda = 5;
   if (!colTime || colTime < 1) colTime = 1;
   var ixPro = colPro - 1;
-  var ixOp = colOp - 1;
+  var ixChoice = colChoice - 1;
+  var ixQid = colQid - 1;
   var ixAgenda = colAgenda - 1;
   var ixTime = colTime - 1;
 
@@ -202,6 +282,48 @@ function getVoteTally_(p) {
   if (!latestAgendaId) {
     latestAgendaId = resolveLatestVoteAgendaId_(data, ixAgenda, ixTime);
   }
+
+  /** 질문 ID 열과 선택 집계 열이 같으면(구형 한 열만 사용) ID 필터 없이 집계 */
+  var sameChoiceAsQid = colChoice === colQid;
+
+  var latestQuestionId = resolveLatestQuestionIdInScope_(
+    data,
+    ixQid,
+    ixAgenda,
+    ixTime,
+    latestAgendaId,
+    hasAnyAgenda
+  );
+  var hasAnyQuestionId = false;
+  if (!sameChoiceAsQid) {
+    for (var hq = 1; hq < data.length; hq++) {
+      var rq = data[hq];
+      if (hasAnyAgenda && String(rq[ixAgenda] || "").trim() !== latestAgendaId) continue;
+      if (String(rq[ixQid] || "").trim()) {
+        hasAnyQuestionId = true;
+        break;
+      }
+    }
+  }
+
+  var headerChoice =
+    data[0] && data[0][ixChoice] != null ? String(data[0][ixChoice]).trim() : "";
+  var headerQid =
+    data[0] && data[0][ixQid] != null ? String(data[0][ixQid]).trim() : "";
+
+  if (sameChoiceAsQid) {
+    latestQuestionId = "";
+    hasAnyQuestionId = false;
+  }
+
+  var questionSentence = resolveVoteQuestionSentence_(
+    props,
+    ss,
+    latestQuestionId,
+    headerChoice,
+    headerQid
+  );
+
   const proCon = {};
   const opinionChoice = {};
   for (var r = 1; r < data.length; r++) {
@@ -209,10 +331,13 @@ function getVoteTally_(p) {
     if (hasAnyAgenda) {
       if (String(row[ixAgenda] || "").trim() !== latestAgendaId) continue;
     }
+    if (hasAnyQuestionId) {
+      if (String(row[ixQid] || "").trim() !== latestQuestionId) continue;
+    }
     var pc = String(row[ixPro] || "").trim();
-    var oc = String(row[ixOp] || "").trim();
+    var ch = String(row[ixChoice] || "").trim();
     if (pc) proCon[pc] = (proCon[pc] || 0) + 1;
-    if (oc) opinionChoice[oc] = (opinionChoice[oc] || 0) + 1;
+    if (ch) opinionChoice[ch] = (opinionChoice[ch] || 0) + 1;
   }
   return {
     ok: true,
@@ -221,6 +346,8 @@ function getVoteTally_(p) {
     sheet: sheetName,
     latestAgendaId: latestAgendaId,
     latestAgendaOnly: !paramAgenda && hasAnyAgenda,
+    latestQuestionId: latestQuestionId,
+    questionSentence: questionSentence,
   };
 }
 
