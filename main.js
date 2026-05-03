@@ -3133,7 +3133,7 @@ function renderClanNotices(data) {
   list.innerHTML = "";
   if (!items.length) {
     list.innerHTML =
-      '<li class="more-bento-empty text-sm">등록된 공지가 없습니다.</li>';
+      '<li class="more-bento-empty text-base">등록된 공지가 없습니다.</li>';
     return;
   }
 
@@ -3169,6 +3169,8 @@ function renderClanNotices(data) {
         n.등록일 ??
         n.일자 ??
         n.날짜 ??
+        n.타임스탬프 ??
+        n.Timestamp ??
         ""
     ).trim();
     const sum = String(
@@ -3177,11 +3179,39 @@ function renderClanNotices(data) {
       .trim()
       .slice(0, 160);
     const author = String(n.author ?? n.writer ?? n.작성자 ?? n.담당 ?? "").trim();
+
+    const metaRows = [];
+    if (date) metaRows.push({ label: "작성일", value: date });
+    if (author) metaRows.push({ label: "작성자", value: author });
+    const metaHtml =
+      metaRows.length > 0
+        ? `<dl class="more-bento-notice-meta mt-2 space-y-1">
+${metaRows
+  .map(
+    ({ label, value }) =>
+      `            <div class="more-bento-notice-row flex gap-2 text-[12px] leading-snug">
+              <dt class="more-bento-notice-dt w-[3.15rem] shrink-0 font-semibold text-stone-500">${label}</dt>
+              <dd class="more-bento-notice-dd min-w-0 flex-1 text-stone-800">${escapeHtml(value)}</dd>
+            </div>`
+  )
+  .join("\n")}
+          </dl>`
+        : "";
+
+    const bodyHtml = sum
+      ? `          <div class="more-bento-notice-body mt-2 border-t border-dashed border-stone-300/80 pt-2">
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-stone-500">내용</div>
+            <p class="mt-1 text-sm leading-relaxed text-stone-700">${escapeHtml(sum)}${sum.length >= 160 ? "…" : ""}</p>
+          </div>`
+      : "";
+
     li.innerHTML = `
-      <div class="font-medium text-ink-900">${escapeHtml(title)}</div>
-      <div class="mt-0.5 text-xs text-stone-500">${escapeHtml(date)}${author ? ` · ${escapeHtml(author)}` : ""}</div>
-      ${sum ? `<div class="mt-1 text-xs text-stone-600">${escapeHtml(sum)}${sum.length >= 160 ? "…" : ""}</div>` : ""}
-    `;
+          <div class="more-bento-notice-head">
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-stone-500">제목</div>
+            <div class="mt-0.5 text-base font-semibold leading-snug text-ink-900">${escapeHtml(title)}</div>
+          </div>
+${metaHtml}${bodyHtml}
+        `;
     list.appendChild(li);
   });
 }
@@ -5191,7 +5221,7 @@ async function loadNoticesSheet() {
   }
   if (!json) {
     list.innerHTML =
-      `<li class="more-bento-empty text-sm">공지사항을 불러오지 못했습니다.</li>` +
+      `<li class="more-bento-empty text-base">공지사항을 불러오지 못했습니다.</li>` +
       `<li class="mt-2 text-[11px] text-stone-500">서버가 계속 <code class="text-xs">{\"status\":\"running\"}</code>만 반환하면 Apps Script 배포/권한/분기(action=notice/notices)와 JSON 반환을 확인해 주세요.</li>`;
     setMoreCollapsed("more-notice", true);
     return;
