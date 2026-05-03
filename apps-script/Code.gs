@@ -76,20 +76,70 @@ function doPost(e) {
  * append 순서는 위와 동일 (타임스탬프는 서버에서 new Date()).
  */
 /**
+ * 여러 구글 폼이 같은 통합문서를 쓸 때: 폼마다 응답 탭을 분리하고, 집계할 탭만 VOTE_RESPONSE_SHEET_NAME 으로 지정.
+ * 스크립트가 그 통합문서에 컨테이너로 묶여 있지 않으면 스크립트 속성 VOTE_TALLY_SPREADSHEET_ID 에 통합문서 ID를 넣음(URL의 /d/ 이후 긴 문자열).
+ */
+function getSpreadsheetForVoteTally_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = String(props.getProperty("VOTE_TALLY_SPREADSHEET_ID") || "").trim();
+  if (id) {
+    try {
+      return SpreadsheetApp.openById(id);
+    } catch (e1) {
+      return {
+        __openError: String(e1 && e1.message ? e1.message : e1),
+      };
+    }
+  }
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
+
+/**
  * GET action=voteTally (또는 voteSummary)
- * 시트 voteResponse: D열 찬반, F열 항목/의견 선택 (1행 헤더, 2행부터 데이터).
- * 선택: agendaId 쿼리가 있으면 E열(안건번호)과 일치하는 행만 집계.
+ * 1행 헤더, 2행부터 집계. 열·탭은 폼 질문 순서마다 다름 → 스크립트 속성으로 맞춤.
+ *
+ * 예) 탭「설문지 응답 시트6」: B=항목/의견 선택, D=찬성/반대 →
+ *   VOTE_RESPONSE_SHEET_NAME = 설문지 응답 시트6
+ *   VOTE_TALLY_COL_OPINION = 2   (B)
+ *   VOTE_TALLY_COL_PRO = 4       (D)
+ * 통합문서 ID(URL /d/뒤): VOTE_TALLY_SPREADSHEET_ID (스크립트가 이 파일에 안 붙어 있을 때)
+ *
+ * 구형 수동 시트(voteResponse 탭, D·F열)는 속성 없을 때 기본값과 맞출 수 있음.
  */
 function getVoteTally_(p) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName("voteResponse");
+  var props = PropertiesService.getScriptProperties();
+  var sheetName = String(props.getProperty("VOTE_RESPONSE_SHEET_NAME") || "voteResponse").trim();
+  if (!sheetName) sheetName = "voteResponse";
+  var colPro = parseInt(String(props.getProperty("VOTE_TALLY_COL_PRO") || "4"), 10);
+  /* 구글 폼 응답: 항목 선택이 B열인 경우가 많아 기본 2. 수동 voteResponse F열이면 속성에 6 */
+  var colOp = parseInt(String(props.getProperty("VOTE_TALLY_COL_OPINION") || "2"), 10);
+  var colAgenda = parseInt(String(props.getProperty("VOTE_TALLY_COL_AGENDA") || "5"), 10);
+  if (!colPro || colPro < 1) colPro = 4;
+  if (!colOp || colOp < 1) colOp = 2;
+  if (!colAgenda || colAgenda < 1) colAgenda = 5;
+  var ixPro = colPro - 1;
+  var ixOp = colOp - 1;
+  var ixAgenda = colAgenda - 1;
+
+  var ss = getSpreadsheetForVoteTally_();
+  if (ss && ss.__openError) {
+    return {
+      ok: false,
+      error:
+        "통합문서를 열 수 없습니다(VOTE_TALLY_SPREADSHEET_ID). 공유 권한·ID 확인: " + ss.__openError,
+      proCon: {},
+      opinionChoice: {},
+      sheet: sheetName,
+    };
+  }
+  const sh = ss.getSheetByName(sheetName);
   if (!sh) {
     return {
       ok: false,
-      error: "시트 'voteResponse'를 찾을 수 없습니다.",
+      error: "시트 '" + sheetName + "'를 찾을 수 없습니다. (스크립트 속성 VOTE_RESPONSE_SHEET_NAME 확인)",
       proCon: {},
       opinionChoice: {},
-      sheet: "voteResponse",
+      sheet: sheetName,
     };
   }
   const agendaFilter = String((p && p.agendaId) || "").trim();
@@ -98,9 +148,9 @@ function getVoteTally_(p) {
   const opinionChoice = {};
   for (var r = 1; r < data.length; r++) {
     var row = data[r];
-    if (agendaFilter && String(row[4] || "").trim() !== agendaFilter) continue;
-    var pc = String(row[3] || "").trim();
-    var oc = String(row[5] || "").trim();
+    if (agendaFilter && String(row[ixAgenda] || "").trim() !== agendaFilter) continue;
+    var pc = String(row[ixPro] || "").trim();
+    var oc = String(row[ixOp] || "").trim();
     if (pc) proCon[pc] = (proCon[pc] || 0) + 1;
     if (oc) opinionChoice[oc] = (opinionChoice[oc] || 0) + 1;
   }
@@ -108,7 +158,7 @@ function getVoteTally_(p) {
     ok: true,
     proCon: proCon,
     opinionChoice: opinionChoice,
-    sheet: "voteResponse",
+    sheet: sheetName,
   };
 }
 

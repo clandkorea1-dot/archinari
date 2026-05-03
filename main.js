@@ -3441,19 +3441,25 @@ function mountClanSheetEditorLinks() {
 /**
  * 문중원 투표: 구글 폼 편집 → 보내기 → `<>` 에서 복사한 iframe `src` 전체(?embedded=true 포함).
  * 비우면 폼 대신 안내 문구만 표시합니다.
+ *
+ * (중요) 집계 API(action=voteTally)는 Apps Script가 보는 통합문서의 응답 탭을 읽습니다.
+ * 여기에 넣은 폼과 응답이 쌓이는 시트가 다르면 숫자가 안 맞습니다.
+ * → 이 폼의「응답」이 들어가는 탭(또는 그 통합문서)을 집계와 맞추세요.
+ *   폼 편집 → 응답 탭 → 스프레드시트에 연결(또는 기존 통합문서에 새 탭으로 연결).
+ *   탭 이름이 voteResponse가 아니면 GAS 스크립트 속성 VOTE_RESPONSE_SHEET_NAME 으로 지정.
  */
 const CLAN_VOTE_GOOGLE_FORM_EMBED_URL =
   "https://docs.google.com/forms/d/1MfnFqlwwZsRFvtPn4z6M0q-0lDFs4iI0a6q9LnIFNHU/viewform?embedded=true";
 
 /**
- * 구글 설문 응답 시트(VoteResponse 등) 데이터 열 — 집계·차트 API 구현 시 사용.
- * 헤더는 1행만 사용하고, 응답 데이터는 2행부터.
+ * 구글 설문 응답 시트 열(문서용). 실제 집계는 Apps Script 속성 VOTE_TALLY_COL_* 가 우선.
+ * 폼 연동 탭 예: 「설문지 응답 시트6」— B=항목/의견 선택, D=찬반 이면 아래와 같음.
  */
 const CLAN_VOTE_RESPONSE_SHEET_COL = {
-  /** 찬반 */
+  /** 찬반(찬성·반대) */
   proCon: "D",
   /** 항목 / 의견 선택 */
-  opinionChoice: "F",
+  opinionChoice: "B",
 };
 
 function mountClanVoteGoogleForm() {
@@ -3800,6 +3806,15 @@ form.addEventListener("submit", async (e) => {
     return;
   }
 
+  if (isFileProtocol()) {
+    showStatus(
+      "지금 주소가 file:// 이라 브라우저가 세보 API(https://script.google.com/…) 요청을 막을 수 있습니다. " +
+        "GitHub Pages 같은 https:// 주소로 열거나, 로컬에서는 정적 서버로 실행해 주세요.",
+      true
+    );
+    return;
+  }
+
   submitBtn.disabled = true;
   showStatus("불러오는 중…");
 
@@ -3811,7 +3826,9 @@ form.addEventListener("submit", async (e) => {
     console.error(err);
     const hint =
       err.message?.includes("Failed to fetch") || err.name === "TypeError"
-        ? " 네트워크 또는 CORS 문제일 수 있습니다. 브라우저 콘솔(F12)을 확인하고, Apps Script 배포가 '모든 사용자'이며 JSON을 반환하는지 점검하세요."
+        ? " — 네트워크·오프라인, 광고/개인정보 확장 차단, 또는 file://로 열었을 때(CORS) 흔합니다. " +
+          "가능하면 https:// 로 배포된 사이트에서 열고, 개발자도구(F12) → 네트워크에서 script.google.com 요청이 실패하는지 확인하세요. " +
+          "Apps Script는 배포 시 ‘웹 앱’·실행 사용자·액세스(익명/모든 사용자)를 맞추고, URL이 main.js의 API_BASE와 같아야 합니다."
         : "";
     showStatus((err.message || "검색 중 오류가 났습니다.") + hint, true);
     lastSearchRows = [];
