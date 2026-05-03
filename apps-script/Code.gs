@@ -128,12 +128,14 @@ function parseVoteTallyCellTime_(val) {
  */
 function resolveLatestVoteAgendaId_(data, ixAgenda, ixTime) {
   if (!data || data.length < 2) return "";
+  /** 안건 번호가 비어 있는 맨 최근 행만 있으면 잘못된 "" 가 되므로, 값이 있는 행 중 시각이 가장 늦은 안건을 쓴다. */
   var bestTime = null;
   var agendaAtBest = "";
   for (var r = 1; r < data.length; r++) {
     var row = data[r];
-    var t = ixTime >= 0 ? parseVoteTallyCellTime_(row[ixTime]) : null;
     var ag = String(row[ixAgenda] || "").trim();
+    if (!ag) continue;
+    var t = ixTime >= 0 ? parseVoteTallyCellTime_(row[ixTime]) : null;
     if (t != null) {
       if (bestTime == null || t >= bestTime) {
         bestTime = t;
@@ -148,7 +150,8 @@ function resolveLatestVoteAgendaId_(data, ixAgenda, ixTime) {
       return String(x ?? "").trim() === "";
     });
     if (isEmpty) continue;
-    return String(rowB[ixAgenda] || "").trim();
+    var ag2 = String(rowB[ixAgenda] || "").trim();
+    if (ag2) return ag2;
   }
   return "";
 }
@@ -165,13 +168,15 @@ function resolveLatestQuestionIdInScope_(
   hasAnyAgenda
 ) {
   if (!data || data.length < 2) return "";
+  /** 질문 ID가 비어 있는 최신 행 때문에 ""만 잡히는 문제 방지: ID가 적힌 행 중 시각이 가장 늦은 ID를 사용 */
   var bestTime = null;
   var qidAtBest = "";
   for (var r = 1; r < data.length; r++) {
     var row = data[r];
     if (hasAnyAgenda && String(row[ixAgenda] || "").trim() !== latestAgendaId) continue;
-    var t = ixTime >= 0 ? parseVoteTallyCellTime_(row[ixTime]) : null;
     var qid = String(row[ixQid] || "").trim();
+    if (!qid) continue;
+    var t = ixTime >= 0 ? parseVoteTallyCellTime_(row[ixTime]) : null;
     if (t != null) {
       if (bestTime == null || t >= bestTime) {
         bestTime = t;
@@ -187,7 +192,8 @@ function resolveLatestQuestionIdInScope_(
       return String(x ?? "").trim() === "";
     });
     if (isEmpty) continue;
-    return String(rowB[ixQid] || "").trim();
+    var q2 = String(rowB[ixQid] || "").trim();
+    if (q2) return q2;
   }
   return "";
 }
