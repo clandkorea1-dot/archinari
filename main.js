@@ -3662,14 +3662,26 @@ function setVoteTallyAgendaHint(json) {
   agendaHint.textContent = "";
   agendaHint.classList.add("hidden");
   if (!json || json.ok === false) return;
-  const aid = String(json.latestAgendaId ?? "").trim();
+  if (json.agendaFilterDisabled) {
+    return;
+  }
   const only = Boolean(json.latestAgendaOnly);
-  if (only && aid) {
-    agendaHint.textContent = `표시: 최신 안건 1건 (안건 번호 ${aid})`;
-    agendaHint.classList.remove("hidden");
-  } else if (only && !aid) {
-    agendaHint.textContent = "표시: 최신 안건 1건 (안건 번호 미기재 응답만)";
-    agendaHint.classList.remove("hidden");
+  if (!only) return;
+  const aidC = String(
+    json.latestAgendaIdForChoice ?? json.latestAgendaId ?? ""
+  ).trim();
+  const aidP = String(json.latestAgendaIdForPro ?? "").trim();
+  agendaHint.classList.remove("hidden");
+  if (aidC && aidP && aidC !== aidP) {
+    agendaHint.textContent =
+      `위 의견 목록: B열·안건 「${aidC}」 최신 한 건 · 아래 찬반: D열·안건 「${aidP}」 최신 한 건(각각 따로).`;
+  } else if (aidC || aidP) {
+    const one = aidC || aidP;
+    agendaHint.textContent =
+      `집계 안건 「${one}」 — 의견(B)·찬반(D) 각각 해당 열 기준 최신 한 건입니다.`;
+  } else {
+    agendaHint.textContent =
+      "안건 열은 있으나 번호가 비어 있는 응답만 포함되었을 수 있습니다.";
   }
 }
 

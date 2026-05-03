@@ -97,8 +97,9 @@ function getSpreadsheetForVoteTally_() {
 /**
  * GET action=voteTally (또는 voteSummary)
  * 1행 헤더, 2행부터 집계. 열·탭은 폼 질문 순서마다 다름 → 스크립트 속성으로 맞춤.
- * 안건 번호 열(VOTE_TALLY_COL_AGENDA)에 값이 하나라도 있으면, 타임스탬프 열(A 기본)이
- * 가장 늦은 행의 안건 번호만 집계한다(쿼리 agendaId 가 없을 때). 안건 열이 모두 비어 있으면 전체 행 집계(구버전 호환).
+ * 안건 열이 있으면: 의견(B)·찬반(D) 각각 해당 열에 값이 있는 행 중 시각이 가장 늦은 행의 안건 번호를 따로 구하고,
+ * 의견 집계와 찬반 집계를 서로 다른 안건 번호로 필터할 수 있다. agendaId 쿼리가 있으면 양쪽 동일 안건으로 고정.
+ * 안건 열이 모두 비어 있으면 전체 행 집계.
  *
  * 예) 구글 폼「설문지 응답 시트6」류: A=타임스탬프, **B=선택 문항(리스트에 표시할 선택 문장 집계)**,
  *   **D=찬반**, 안건 열이 있으면 그 다음 등 →
@@ -167,6 +168,35 @@ function resolveLatestVoteAgendaId_(data, ixAgenda, ixTime) {
     if (isEmpty) continue;
     var ag2 = String(rowB[ixAgenda] || "").trim();
     if (ag2) return ag2;
+  }
+  return "";
+}
+
+/**
+ * 특정 열(의견 B 또는 찬반 D)에 값이 있는 행만 보면서, 그중 타임스탬프가 가장 늦은 행의 안건 번호.
+ * 의견·찬반을 「최신 한 건」씩 따로 잡을 때 사용한다.
+ */
+function resolveLatestAgendaForNonEmptyCol_(data, ixAgenda, ixTime, ixCol) {
+  if (!data || data.length < 2) return "";
+  var bestTime = null;
+  var agendaAtBest = "";
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    if (!String(row[ixCol] || "").trim()) continue;
+    var ag = String(row[ixAgenda] || "").trim();
+    var t = ixTime >= 0 ? parseVoteTallyCellTime_(row[ixTime]) : null;
+    if (t != null) {
+      if (bestTime == null || t >= bestTime) {
+        bestTime = t;
+        agendaAtBest = ag;
+      }
+    }
+  }
+  if (bestTime != null) return agendaAtBest;
+  for (var bottom = data.length - 1; bottom >= 1; bottom--) {
+    var rowB = data[bottom];
+    if (!String(rowB[ixCol] || "").trim()) continue;
+    return String(rowB[ixAgenda] || "").trim();
   }
   return "";
 }
@@ -394,12 +424,25 @@ function getVoteTally_(p) {
       }
     }
   }
-  var latestAgendaId = paramAgenda;
-  if (!disableAgenda && !latestAgendaId) {
-    latestAgendaId = resolveLatestVoteAgendaId_(data, ixAgenda, ixTime);
-  }
-  if (disableAgenda) {
-    latestAgendaId = "";
+  var latestAgendaIdChoice = "";
+  var latestAgendaIdPro = "";
+  if (!disableAgenda && hasAnyAgenda) {
+    if (paramAgenda) {
+      latestAgendaIdChoice = paramAgenda;
+      latestAgendaIdPro = paramAgenda;
+    } else {
+      latestAgendaIdChoice = resolveLatestAgendaForNonEmptyCol_(
+        data,
+        ixAgenda,
+        ixTime,
+        ixChoice
+      );
+      latestAgendaIdPro = resolveLatestAgendaForNonEmptyCol_(data, ixAgenda, ixTime, ixPro);
+      if (!latestAgendaIdChoice)
+        latestAgendaIdChoice = resolveLatestVoteAgendaId_(data, ixAgenda, ixTime);
+      if (!latestAgendaIdPro)
+        latestAgendaIdPro = resolveLatestVoteAgendaId_(data, ixAgenda, ixTime);
+    }
   }
 
   /** 질문 ID 열과 선택 집계 열이 같으면(구형 한 열만 사용) ID 필터 없이 집계 */
@@ -410,14 +453,14 @@ function getVoteTally_(p) {
     ixQid,
     ixAgenda,
     ixTime,
-    latestAgendaId,
+    latestAgendaIdChoice,
     hasAnyAgenda
   );
   var hasAnyQuestionId = false;
   if (!sameChoiceAsQid) {
     for (var hq = 1; hq < data.length; hq++) {
       var rq = data[hq];
-      if (hasAnyAgenda && String(rq[ixAgenda] || "").trim() !== latestAgendaId) continue;
+      if (hasAnyAgenda && String(rq[ixAgenda] || "").trim() !== latestAgendaIdChoice) continue;
       if (String(rq[ixQid] || "").trim()) {
         hasAnyQuestionId = true;
         break;
@@ -445,18 +488,25 @@ function getVoteTally_(p) {
 
   const proCon = {};
   const opinionChoice = {};
+  /** 의견(B)·찬반(D) 각각 「해당 열에 값이 있는 행 중 최신 안건」으로 따로 집계 */
   for (var r = 1; r < data.length; r++) {
     var row = data[r];
-    if (hasAnyAgenda) {
-      if (String(row[ixAgenda] || "").trim() !== latestAgendaId) continue;
+    if (hasAnyAgenda && !disableAgenda) {
+      if (String(row[ixAgenda] || "").trim() !== latestAgendaIdChoice) continue;
     }
     if (hasAnyQuestionId) {
       if (String(row[ixQid] || "").trim() !== latestQuestionId) continue;
     }
-    var pc = String(row[ixPro] || "").trim();
     var ch = String(row[ixChoice] || "").trim();
-    if (pc) proCon[pc] = (proCon[pc] || 0) + 1;
     if (ch) opinionChoice[ch] = (opinionChoice[ch] || 0) + 1;
+  }
+  for (var r2 = 1; r2 < data.length; r2++) {
+    var row2 = data[r2];
+    if (hasAnyAgenda && !disableAgenda) {
+      if (String(row2[ixAgenda] || "").trim() !== latestAgendaIdPro) continue;
+    }
+    var pc = String(row2[ixPro] || "").trim();
+    if (pc) proCon[pc] = (proCon[pc] || 0) + 1;
   }
   var tallyColumns = {
     timestamp: colTime,
@@ -475,7 +525,9 @@ function getVoteTally_(p) {
     proCon: proCon,
     opinionChoice: opinionChoice,
     sheet: sheetName,
-    latestAgendaId: latestAgendaId,
+    latestAgendaId: latestAgendaIdChoice,
+    latestAgendaIdForChoice: latestAgendaIdChoice,
+    latestAgendaIdForPro: latestAgendaIdPro,
     latestAgendaOnly: !paramAgenda && hasAnyAgenda,
     latestQuestionId: latestQuestionId,
     questionSentence: questionSentence,
