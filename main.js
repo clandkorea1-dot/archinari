@@ -2,8 +2,7 @@
  * 아천문중 세보 검색 — Google Apps Script Web App
  * GET: ?action=search&name=검색어
  */
-const API_BASE =
-  "https://script.google.com/macros/s/AKfycbyy30psVcEtx_A2IY2HqbdyMtFhVeofEr9sFD_pxMU3K9I2n5NuOh6GM3zhwqVoch5D5w/exec";
+const API_BASE = "https://script.google.com/macros/s/AKfycbyy30psVcEtx_A2IY2HqbdyMtFhVeofEr9sFD_pxMU3K9I2n5NuOh6GM3zhwqVoch5D5w/exec";
 
 const form = document.getElementById("search-form");
 const nameInput = document.getElementById("name-input");
@@ -3453,14 +3452,14 @@ const CLAN_VOTE_GOOGLE_FORM_EMBED_URL =
 
 /**
  * 구글 설문 응답 시트 열(문서용). 실제 집계는 Apps Script 속성 VOTE_TALLY_COL_* 가 우선.
- * 예: B=질문 ID, C=선택지 응답, D=찬반 — 표시 문장은 서버가 questionSentence 로 내려줌(VOTE_QUESTION_TEXT_JSON 등).
+ * 예: 설문지 응답 시트6 — B=선택 문항(리스트), D=찬반. 실제 열은 Apps Script 속성(VOTE_TALLY_COL_*).
  */
 const CLAN_VOTE_RESPONSE_SHEET_COL = {
-  /** 찬반(찬성·반대) */
+  /** 찬반(찬성·반대) — 설문지 응답 시트6 기준 D */
   proCon: "D",
-  /** 질문 ID(B)·선택지 집계 열(C)은 서버 전용 열 번호 속성 참고 */
+  /** 선택 문항(리스트 집계) — 동 시트 기준 B */
+  choice: "B",
   questionId: "B",
-  choice: "C",
 };
 
 function mountClanVoteGoogleForm() {
@@ -3536,22 +3535,22 @@ function sortTallyByCountDesc(rows) {
 
 const VOTE_TALLY_BAR_COLORS = ["bg-wine/90", "bg-seal/85", "bg-emerald-800/80"];
 
-/** 좌측: D열 찬반 집계 → 세로 막대 최대 2개 */
+/** 하단 블록: D열 찬반 → 세로 막대 최대 2개,「찬반」레이블은 막대 아래 */
 function renderVoteTallyProConVerticalBars(container, rows) {
   if (!container) return;
   container.innerHTML = "";
-  const head = document.createElement("div");
-  head.className =
-    "mb-2 w-full text-center text-[10px] font-bold uppercase tracking-wide text-stone-500 sm:text-left";
-  head.textContent = "찬반";
-  container.appendChild(head);
 
   const sorted = sortTallyByCountDesc(rows);
   if (!sorted.length) {
     const p = document.createElement("p");
-    p.className = "w-full text-center text-[11px] text-stone-500 sm:text-left";
-    p.textContent = "응답 없음";
+    p.className = "w-full text-center text-[11px] text-stone-500";
+    p.textContent = "찬반 응답 없음";
     container.appendChild(p);
+    const footEmpty = document.createElement("div");
+    footEmpty.className =
+      "mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-stone-500";
+    footEmpty.textContent = "찬반";
+    container.appendChild(footEmpty);
     return;
   }
 
@@ -3561,7 +3560,7 @@ function renderVoteTallyProConVerticalBars(container, rows) {
   const pair = [a, b];
 
   const bars = document.createElement("div");
-  bars.className = "flex w-full items-end justify-center gap-6 sm:gap-8";
+  bars.className = "flex w-full items-end justify-center gap-6 sm:gap-10";
   pair.forEach((item, i) => {
     const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
     const barColor = VOTE_TALLY_BAR_COLORS[i % VOTE_TALLY_BAR_COLORS.length];
@@ -3588,11 +3587,16 @@ function renderVoteTallyProConVerticalBars(container, rows) {
     bars.appendChild(col);
   });
   container.appendChild(bars);
+
+  const foot = document.createElement("div");
+  foot.className =
+    "mt-2 w-full text-center text-[10px] font-bold uppercase tracking-wide text-stone-500";
+  foot.textContent = "찬반";
+  container.appendChild(foot);
 }
 
 /**
- * 우측: 서버가 내려준 질문 문장(questionSentence) + 선택지별 (인원).
- * API opinionChoice 는 응답 시트의 선택 열(기본 C) 값을 집계한 것이며, 라벨은 더 이상 B열이 아님.
+ * 상단 블록: 질문 문장(questionSentence) + 선택지별 인원, 항목마다 한 줄.
  */
 function renderVoteTallyOpinionHorizontal(container, rows, questionSentence) {
   if (!container) return;
@@ -3601,7 +3605,7 @@ function renderVoteTallyOpinionHorizontal(container, rows, questionSentence) {
   if (title) {
     const head = document.createElement("div");
     head.className =
-      "mb-2 text-[11px] font-semibold leading-snug text-ink-900 sm:text-right";
+      "mb-2.5 text-[12px] font-semibold leading-snug text-ink-900";
     head.textContent = title;
     container.appendChild(head);
   }
@@ -3609,22 +3613,23 @@ function renderVoteTallyOpinionHorizontal(container, rows, questionSentence) {
   const list = sortTallyByCountDesc(rows);
   if (!list.length) {
     const p = document.createElement("p");
-    p.className = "text-[11px] text-stone-500 sm:text-right";
-    p.textContent = "응답 없음";
+    p.className = "text-[11px] text-stone-500";
+    p.textContent = "의견·항목 응답 없음";
     container.appendChild(p);
     return;
   }
 
-  const row = document.createElement("div");
-  row.className =
-    "flex flex-wrap items-baseline justify-start gap-x-3 gap-y-1.5 text-[11px] leading-snug text-ink-900 sm:justify-end";
+  const listEl = document.createElement("ul");
+  listEl.className =
+    "list-none space-y-1.5 text-[11px] leading-snug text-ink-900";
   list.forEach((item) => {
-    const span = document.createElement("span");
-    span.className = "min-w-0 max-w-full";
-    span.innerHTML = `${escapeHtml(item.label)} <span class="tabular-nums text-stone-600">(${item.count})</span>`;
-    row.appendChild(span);
+    const li = document.createElement("li");
+    li.className =
+      "flex w-full min-w-0 items-baseline justify-between gap-3 border-b border-[#1a2e2e]/10 pb-1.5 last:border-0 last:pb-0";
+    li.innerHTML = `<span class="min-w-0 flex-1 break-words">${escapeHtml(item.label)}</span><span class="shrink-0 tabular-nums text-stone-600">(${item.count})</span>`;
+    listEl.appendChild(li);
   });
-  container.appendChild(row);
+  container.appendChild(listEl);
 }
 
 function setVoteTallyAgendaHint(json) {
@@ -3690,8 +3695,15 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
   const proTotal = proRows.reduce((s, r) => s + r.count, 0);
   const opTotal = opRows.reduce((s, r) => s + r.count, 0);
   if (statusEl && !proTotal && !opTotal) {
+    const tc = json.tallyColumns;
+    const colHint =
+      tc && typeof tc === "object"
+        ? ` 서버가 읽은 열 번호(A=1): 시각 ${tc.timestamp}, 질문ID ${tc.questionId}, 선택 ${tc.choice}, 찬반 ${tc.proCon}, 안건 ${tc.agenda}.`
+        : "";
     statusEl.textContent =
-      "아직 집계된 응답이 없거나, 시트 열(찬반·선택·질문 ID)과 구글 폼 필드가 맞지 않을 수 있습니다.";
+      "집계 결과가 비어 있습니다. 응답이 없거나 열 지정이 폼과 다를 수 있습니다." +
+      colHint +
+      " Apps Script 속성 VOTE_TALLY_COL_* 또는 헤더 부분 문자열 VOTE_TALLY_MATCH_* 로 맞추세요.";
   }
 }
 

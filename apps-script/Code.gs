@@ -1,7 +1,7 @@
 /**
  * 의성김씨 아천문중 세보 - 통합 엔진 (로컬 apps-script/Code.gs 백업본)
  * - search / person(getDetail) / getTree / kinship / eightKin
- * - notice / property / voteResponse / voteTally (B=질문 ID·C=선택 집계 등; 안건 열 있으면 최신 안건 1건·최신 질문 ID 반영)
+ * - notice / property / voteResponse / voteTally (기본 B=선택·D=찬반 등; 속성으로 열 지정)
  * - genRange(min,max): 1-10세 전용 트리 데이터 (형제 포함)
  * - vote: 안건 JSON (Script Properties 또는 voteAgenda 시트)
  * - history / movements: 시트 history, movements
@@ -100,17 +100,30 @@ function getSpreadsheetForVoteTally_() {
  * 안건 번호 열(VOTE_TALLY_COL_AGENDA)에 값이 하나라도 있으면, 타임스탬프 열(A 기본)이
  * 가장 늦은 행의 안건 번호만 집계한다(쿼리 agendaId 가 없을 때). 안건 열이 모두 비어 있으면 전체 행 집계(구버전 호환).
  *
- * 예) B열=질문 ID, C열=선택지 응답, D열=찬반, E열=안건 번호 →
- *   VOTE_TALLY_COL_QUESTION_ID = 2   (B, 타임스탬프 기준 최신 행의 ID → 질문 문장 표시)
- *   VOTE_TALLY_COL_CHOICE = 3          (C, 선택지별 인원 집계)
- *   VOTE_TALLY_COL_PRO = 4             (D)
- *   VOTE_TALLY_COL_AGENDA = 5          (E)
+ * 예) 구글 폼「설문지 응답 시트6」류: A=타임스탬프, **B=선택 문항(리스트에 표시할 선택 문장 집계)**,
+ *   **D=찬반**, 안건 열이 있으면 그 다음 등 →
+ *   VOTE_RESPONSE_SHEET_NAME = 설문지 응답 시트6
+ *   VOTE_TALLY_COL_CHOICE = 2          (B, 선택지별 인원·문구 출처)
+ *   VOTE_TALLY_COL_PRO = 4             (D, 찬반 막대)
+ *   VOTE_TALLY_COL_QUESTION_ID = 2     (B와 동일이면 질문 ID 필터 없음 → B 헤더가 제목)
+ *   VOTE_TALLY_COL_AGENDA = 5          (E, 선택)
+ * (별도 B=질문 ID·C=선택 인 폼이면 속성으로 열만 바꿈.)
  * 질문 ID → 표시 문장: Script Properties 의 JSON 키 VOTE_QUESTION_TEXT_JSON (예: {"Q1":"문장..."}),
  *   또는 통합문서 시트 voteQuestionMap (A열 ID, B열 문장). 없으면 선택 열 헤더(1행)를 문장으로 사용.
  *   VOTE_TALLY_COL_TIMESTAMP = 1 (A, 최신 안건·최신 질문 ID 판별)
+ *
+ * 열이 폼 질문 순서와 다르면 숫자 기본값이 틀어짐 → 반드시 스크립트 속성으로 맞춤:
+ *   VOTE_TALLY_COL_PRO / _CHOICE / _QUESTION_ID / _AGENDA / _COL_TIMESTAMP (1=A, 2=B …)
+ * 또는 응답 시트 1행 헤더에 포함되는 짧은 문자열로 지정:
+ *   VOTE_TALLY_MATCH_PRO, _CHOICE, _QUESTION_ID, _AGENDA, _TIMESTAMP
+ * (예: MATCH_PRO=찬반, MATCH_CHOICE=귀하의 선택 — 구글 폼 질문 제목 일부)
+ * 성공 응답의 tallyColumns 에 실제 사용한 열 번호가 나오므로 배포 후 확인 가능.
  * 통합문서 ID(URL /d/뒤): VOTE_TALLY_SPREADSHEET_ID (스크립트가 이 파일에 안 붙어 있을 때)
  *
  * 구형 수동 시트(voteResponse 탭, D·F열)는 속성 없을 때 기본값과 맞출 수 있음.
+ * 안건 전용 열이 없는 설문(구글 폼)인데 E열에 다른 답이 있으면 잘못 필터됨 →
+ *   스크립트 속성 VOTE_TALLY_DISABLE_AGENDA = 1 로 안건 구간 집계 끄기.
+ * VOTE_RESPONSE_SHEET_NAME 을 비우면: 탭「설문지 응답 시트6」이 있으면 그걸 쓰고, 없으면 voteResponse.
  */
 /** 시트 셀을 밀리초로 (구글 시트 Date 또는 파싱 가능한 문자열) */
 function parseVoteTallyCellTime_(val) {
@@ -229,30 +242,98 @@ function resolveVoteQuestionSentence_(props, ss, questionId, headerChoiceCol, he
   return q;
 }
 
+/**
+ * 헤더 1행에서 부분 문자열로 열 찾기(대소문자 무시). 없으면 -1.
+ */
+function voteTallyHeaderMatchIndex_(headerRow, substring) {
+  var sub = String(substring || "").trim();
+  if (!sub) return -1;
+  var low = sub.toLowerCase();
+  for (var j = 0; j < headerRow.length; j++) {
+    if (String(headerRow[j] || "").toLowerCase().indexOf(low) >= 0) return j;
+  }
+  return -1;
+}
+
+/**
+ * 여러 키워드 중 첫 매칭 열(1-based). 없으면 -1.
+ */
+function voteTallyHeaderAutoMatch_(headerRow, keywords) {
+  for (var k = 0; k < keywords.length; k++) {
+    var ix = voteTallyHeaderMatchIndex_(headerRow, keywords[k]);
+    if (ix >= 0) return ix + 1;
+  }
+  return -1;
+}
+
+/**
+ * 숫자 속성 → 헤더 MATCH_* → 키워드 자동 추정 순으로 열 번호 결정(각각 1-based).
+ */
+function resolveVoteTallyColumnNumbers_(props, headerRow) {
+  var h = headerRow || [];
+  function num(key, fallback) {
+    var v = parseInt(String(props.getProperty(key) || "").trim(), 10);
+    return v >= 1 ? v : fallback;
+  }
+  function fromMatch(key) {
+    var sub = props.getProperty(key);
+    if (!sub) return -1;
+    var ix = voteTallyHeaderMatchIndex_(h, String(sub).trim());
+    return ix >= 0 ? ix + 1 : -1;
+  }
+
+  var colTime = num("VOTE_TALLY_COL_TIMESTAMP", 0);
+  if (colTime < 1) colTime = fromMatch("VOTE_TALLY_MATCH_TIMESTAMP");
+  if (colTime < 1) colTime = voteTallyHeaderAutoMatch_(h, ["타임스탬프", "timestamp", "time stamp"]);
+  if (colTime < 1) colTime = 1;
+
+  var colAgenda = num("VOTE_TALLY_COL_AGENDA", 0);
+  if (colAgenda < 1) colAgenda = fromMatch("VOTE_TALLY_MATCH_AGENDA");
+  if (colAgenda < 1) colAgenda = voteTallyHeaderAutoMatch_(h, ["안건 번호", "안건번호", "안건 id", "안건"]);
+  if (colAgenda < 1) colAgenda = 5;
+
+  var colPro = num("VOTE_TALLY_COL_PRO", 0);
+  if (colPro < 1) colPro = fromMatch("VOTE_TALLY_MATCH_PRO");
+  if (colPro < 1) colPro = voteTallyHeaderAutoMatch_(h, ["찬반"]);
+  if (colPro < 1) colPro = 4;
+
+  var colQid = num("VOTE_TALLY_COL_QUESTION_ID", 0);
+  if (colQid < 1) colQid = fromMatch("VOTE_TALLY_MATCH_QUESTION_ID");
+  if (colQid < 1) colQid = voteTallyHeaderAutoMatch_(h, ["질문 id", "question id", "문항 id", "질문id"]);
+  if (colQid < 1) colQid = 2;
+
+  var colChoice = num("VOTE_TALLY_COL_CHOICE", 0);
+  if (colChoice < 1) colChoice = fromMatch("VOTE_TALLY_MATCH_CHOICE");
+  if (colChoice < 1) {
+    var legacyOp = String(props.getProperty("VOTE_TALLY_COL_OPINION") || "").trim();
+    if (legacyOp) colChoice = parseInt(legacyOp, 10) || 0;
+  }
+  /** 기본 B열: 설문지 응답 시트6 등에서 선택 문항이 보통 B */
+  if (colChoice < 1) colChoice = 2;
+
+  return {
+    colPro: colPro,
+    colChoice: colChoice,
+    colQid: colQid,
+    colAgenda: colAgenda,
+    colTime: colTime,
+  };
+}
+
+/** 집계용 응답 탭 이름: 속성 우선, 없으면 설문지 탭 → voteResponse 순 */
+function resolveVoteResponseSheetName_(ss, props) {
+  var explicit = String(props.getProperty("VOTE_RESPONSE_SHEET_NAME") || "").trim();
+  if (explicit) return explicit;
+  try {
+    if (ss.getSheetByName("설문지 응답 시트6")) return "설문지 응답 시트6";
+  } catch (e1) {
+    // ignore
+  }
+  return "voteResponse";
+}
+
 function getVoteTally_(p) {
   var props = PropertiesService.getScriptProperties();
-  var sheetName = String(props.getProperty("VOTE_RESPONSE_SHEET_NAME") || "voteResponse").trim();
-  if (!sheetName) sheetName = "voteResponse";
-  var colPro = parseInt(String(props.getProperty("VOTE_TALLY_COL_PRO") || "4"), 10);
-  /* B열=질문 ID, 선택지 집계 열은 VOTE_TALLY_COL_CHOICE (기본 C). 구버전 VOTE_TALLY_COL_OPINION만 있으면 그 열을 선택지로 사용 */
-  var colChoice = parseInt(String(props.getProperty("VOTE_TALLY_COL_CHOICE") || ""), 10);
-  var legacyOp = String(props.getProperty("VOTE_TALLY_COL_OPINION") || "").trim();
-  if (!colChoice || colChoice < 1) {
-    colChoice = legacyOp ? parseInt(legacyOp, 10) || 3 : 3;
-  }
-  var colQid = parseInt(String(props.getProperty("VOTE_TALLY_COL_QUESTION_ID") || "2"), 10);
-  var colAgenda = parseInt(String(props.getProperty("VOTE_TALLY_COL_AGENDA") || "5"), 10);
-  var colTime = parseInt(String(props.getProperty("VOTE_TALLY_COL_TIMESTAMP") || "1"), 10);
-  if (!colPro || colPro < 1) colPro = 4;
-  if (!colChoice || colChoice < 1) colChoice = 3;
-  if (!colQid || colQid < 1) colQid = 2;
-  if (!colAgenda || colAgenda < 1) colAgenda = 5;
-  if (!colTime || colTime < 1) colTime = 1;
-  var ixPro = colPro - 1;
-  var ixChoice = colChoice - 1;
-  var ixQid = colQid - 1;
-  var ixAgenda = colAgenda - 1;
-  var ixTime = colTime - 1;
 
   var ss = getSpreadsheetForVoteTally_();
   if (ss && ss.__openError) {
@@ -262,14 +343,18 @@ function getVoteTally_(p) {
         "통합문서를 열 수 없습니다(VOTE_TALLY_SPREADSHEET_ID). 공유 권한·ID 확인: " + ss.__openError,
       proCon: {},
       opinionChoice: {},
-      sheet: sheetName,
+      sheet: "",
     };
   }
-  const sh = ss.getSheetByName(sheetName);
+  var sheetName = resolveVoteResponseSheetName_(ss, props);
+  var sh = ss.getSheetByName(sheetName);
   if (!sh) {
     return {
       ok: false,
-      error: "시트 '" + sheetName + "'를 찾을 수 없습니다. (스크립트 속성 VOTE_RESPONSE_SHEET_NAME 확인)",
+      error:
+        "시트 '" +
+        sheetName +
+        "'를 찾을 수 없습니다. 통합문서에 탭 이름을 확인하거나 스크립트 속성 VOTE_RESPONSE_SHEET_NAME 을 지정하세요.",
       proCon: {},
       opinionChoice: {},
       sheet: sheetName,
@@ -277,16 +362,42 @@ function getVoteTally_(p) {
   }
   const paramAgenda = String((p && p.agendaId) || "").trim();
   const data = sh.getDataRange().getValues();
+  var headerRow = data.length ? data[0] : [];
+  var cols = resolveVoteTallyColumnNumbers_(props, headerRow);
+  var colPro = cols.colPro;
+  var colChoice = cols.colChoice;
+  var colQid = cols.colQid;
+  var colAgenda = cols.colAgenda;
+  var colTime = cols.colTime;
+
+  if (!colPro || colPro < 1) colPro = 4;
+  if (!colChoice || colChoice < 1) colChoice = 2;
+  if (!colQid || colQid < 1) colQid = 2;
+  if (!colAgenda || colAgenda < 1) colAgenda = 5;
+  if (!colTime || colTime < 1) colTime = 1;
+  var ixPro = colPro - 1;
+  var ixChoice = colChoice - 1;
+  var ixQid = colQid - 1;
+  var ixAgenda = colAgenda - 1;
+  var ixTime = colTime - 1;
+  var disableAgenda = /^1|true|yes$/i.test(
+    String(props.getProperty("VOTE_TALLY_DISABLE_AGENDA") || "").trim()
+  );
   var hasAnyAgenda = false;
-  for (var ha = 1; ha < data.length; ha++) {
-    if (String(data[ha][ixAgenda] || "").trim()) {
-      hasAnyAgenda = true;
-      break;
+  if (!disableAgenda) {
+    for (var ha = 1; ha < data.length; ha++) {
+      if (String(data[ha][ixAgenda] || "").trim()) {
+        hasAnyAgenda = true;
+        break;
+      }
     }
   }
   var latestAgendaId = paramAgenda;
-  if (!latestAgendaId) {
+  if (!disableAgenda && !latestAgendaId) {
     latestAgendaId = resolveLatestVoteAgendaId_(data, ixAgenda, ixTime);
+  }
+  if (disableAgenda) {
+    latestAgendaId = "";
   }
 
   /** 질문 ID 열과 선택 집계 열이 같으면(구형 한 열만 사용) ID 필터 없이 집계 */
@@ -345,7 +456,14 @@ function getVoteTally_(p) {
     if (pc) proCon[pc] = (proCon[pc] || 0) + 1;
     if (ch) opinionChoice[ch] = (opinionChoice[ch] || 0) + 1;
   }
-  return {
+  var tallyColumns = {
+    timestamp: colTime,
+    questionId: colQid,
+    choice: colChoice,
+    proCon: colPro,
+    agenda: colAgenda,
+  };
+  var out = {
     ok: true,
     proCon: proCon,
     opinionChoice: opinionChoice,
@@ -354,7 +472,16 @@ function getVoteTally_(p) {
     latestAgendaOnly: !paramAgenda && hasAnyAgenda,
     latestQuestionId: latestQuestionId,
     questionSentence: questionSentence,
+    tallyColumns: tallyColumns,
+    agendaFilterDisabled: disableAgenda,
   };
+  var wantDebug = p && String(p.debug || "").trim() === "1";
+  if (wantDebug && headerRow.length) {
+    out.headerPreview = headerRow.map(function (cell, i) {
+      return { col: i + 1, header: String(cell != null ? cell : "").trim() };
+    });
+  }
+  return out;
 }
 
 function handleVoteSubmit_(p) {
