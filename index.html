@@ -809,8 +809,27 @@
                   새로고침
                 </button>
               </div>
-              <div id="vote-tally-procon" class="mt-2"></div>
-              <div id="vote-tally-opinion" class="mt-3 border-t border-stone-200/80 pt-3"></div>
+              <p
+                id="vote-tally-agenda-hint"
+                class="mt-1.5 hidden text-[10px] text-stone-500"
+              ></p>
+              <div
+                id="vote-tally-visual"
+                class="mt-2 flex flex-col items-stretch gap-3 sm:mt-2.5 sm:flex-row sm:items-end sm:justify-center sm:gap-0"
+              >
+                <div
+                  id="vote-tally-procon"
+                  class="flex min-h-[5.5rem] flex-1 items-end justify-center sm:min-w-0 sm:max-w-[50%] sm:pr-3"
+                ></div>
+                <div
+                  class="hidden h-20 w-px shrink-0 self-center bg-stone-200/90 sm:block"
+                  aria-hidden="true"
+                ></div>
+                <div
+                  id="vote-tally-opinion"
+                  class="min-w-0 flex-1 sm:max-w-[50%] sm:pl-3"
+                ></div>
+              </div>
               <p id="vote-tally-status" class="mt-2 text-[11px] leading-snug text-stone-500"></p>
             </div>
             <div class="more-expand-dock">
@@ -839,7 +858,9 @@
             <ul class="more-bento-body mt-2 list-inside list-disc space-y-2 text-sm text-[#1a2e2e]/85">
               <li>세보 검색은 홈에서 합니다.</li>
               <li>가계도는 양 손을 이용하여 이동·확대합니다.</li>
-              <li>선조의 발자취 탭에서 유적 지도를 봅니다.</li>
+              <li>
+                투표의 중복 방지를 위해 이름을 넣습니다. 답변 지우기는 맨 아래 ‘양식지우기’입니다.
+              </li>
             </ul>
           </section>
 

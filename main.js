@@ -3535,40 +3535,106 @@ function sortTallyByCountDesc(rows) {
 
 const VOTE_TALLY_BAR_COLORS = ["bg-wine/90", "bg-seal/85", "bg-emerald-800/80"];
 
-function renderVoteTallyBarGroup(container, sectionTitle, rows) {
+/** 좌측: D열 찬반 집계 → 세로 막대 최대 2개 */
+function renderVoteTallyProConVerticalBars(container, rows) {
   if (!container) return;
   container.innerHTML = "";
   const head = document.createElement("div");
   head.className =
-    "mb-1.5 text-[10px] font-bold uppercase tracking-wide text-stone-500";
-  head.textContent = sectionTitle;
+    "mb-2 w-full text-center text-[10px] font-bold uppercase tracking-wide text-stone-500 sm:text-left";
+  head.textContent = "찬반";
   container.appendChild(head);
-  const list = sortTallyByCountDesc(rows);
-  const total = list.reduce((s, r) => s + r.count, 0);
-  if (!list.length) {
+
+  const sorted = sortTallyByCountDesc(rows);
+  if (!sorted.length) {
     const p = document.createElement("p");
-    p.className = "text-[11px] text-stone-500";
+    p.className = "w-full text-center text-[11px] text-stone-500 sm:text-left";
     p.textContent = "응답 없음";
     container.appendChild(p);
     return;
   }
-  list.forEach((row, i) => {
-    const pct = total > 0 ? Math.round((row.count / total) * 1000) / 10 : 0;
-    const w = total > 0 ? Math.max(2, Math.round((row.count / total) * 10000) / 100) : 0;
+
+  const a = sorted[0] || { label: "", count: 0 };
+  const b = sorted[1] || { label: "", count: 0 };
+  const maxCount = Math.max(1, a.count, b.count);
+  const pair = [a, b];
+
+  const bars = document.createElement("div");
+  bars.className = "flex w-full items-end justify-center gap-6 sm:gap-8";
+  pair.forEach((item, i) => {
+    const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
     const barColor = VOTE_TALLY_BAR_COLORS[i % VOTE_TALLY_BAR_COLORS.length];
-    const rowEl = document.createElement("div");
-    rowEl.className = "mb-2 last:mb-0";
-    rowEl.innerHTML = `
-      <div class="flex justify-between gap-2 text-[11px] text-ink-900">
-        <span class="min-w-0 truncate">${escapeHtml(row.label)}</span>
-        <span class="shrink-0 tabular-nums text-stone-600">${row.count} <span class="text-stone-400">(${pct}%)</span></span>
-      </div>
-      <div class="mt-0.5 h-2 overflow-hidden rounded-full bg-stone-200/90">
-        <div class="h-full rounded-full ${barColor}" style="width:${w}%"></div>
-      </div>
-    `;
-    container.appendChild(rowEl);
+    const col = document.createElement("div");
+    col.className = "flex min-w-0 flex-col items-center gap-1";
+    const track = document.createElement("div");
+    track.className =
+      "flex h-[4.5rem] w-6 shrink-0 items-end justify-center overflow-hidden rounded-t-md bg-stone-200/90 sm:w-7";
+    const fill = document.createElement("div");
+    fill.className = `w-full min-h-0 rounded-t-md ${barColor}`;
+    fill.style.height = `${pct}%`;
+    if (item.count === 0) fill.style.minHeight = "0";
+    track.appendChild(fill);
+    const labelEl = document.createElement("div");
+    labelEl.className =
+      "max-w-[5.5rem] text-center text-[10px] font-medium leading-tight text-ink-900";
+    labelEl.textContent = item.label ? item.label : "—";
+    const numEl = document.createElement("div");
+    numEl.className = "text-[10px] tabular-nums text-stone-600";
+    numEl.textContent = String(item.count);
+    col.appendChild(track);
+    col.appendChild(labelEl);
+    col.appendChild(numEl);
+    bars.appendChild(col);
   });
+  container.appendChild(bars);
+}
+
+/** 우측: B열 선택 항목을 가로로 나열, 문장 끝에 (인원) */
+function renderVoteTallyOpinionHorizontal(container, rows) {
+  if (!container) return;
+  container.innerHTML = "";
+  const head = document.createElement("div");
+  head.className =
+    "mb-1.5 text-[10px] font-bold uppercase tracking-wide text-stone-500 sm:text-right";
+  head.textContent = "항목·의견 선택";
+  container.appendChild(head);
+
+  const list = sortTallyByCountDesc(rows);
+  if (!list.length) {
+    const p = document.createElement("p");
+    p.className = "text-[11px] text-stone-500 sm:text-right";
+    p.textContent = "응답 없음";
+    container.appendChild(p);
+    return;
+  }
+
+  const row = document.createElement("div");
+  row.className =
+    "flex flex-wrap items-baseline justify-start gap-x-3 gap-y-1.5 text-[11px] leading-snug text-ink-900 sm:justify-end";
+  list.forEach((item) => {
+    const span = document.createElement("span");
+    span.className = "min-w-0 max-w-full";
+    span.innerHTML = `${escapeHtml(item.label)} <span class="tabular-nums text-stone-600">(${item.count})</span>`;
+    row.appendChild(span);
+  });
+  container.appendChild(row);
+}
+
+function setVoteTallyAgendaHint(json) {
+  const agendaHint = document.getElementById("vote-tally-agenda-hint");
+  if (!agendaHint) return;
+  agendaHint.textContent = "";
+  agendaHint.classList.add("hidden");
+  if (!json || json.ok === false) return;
+  const aid = String(json.latestAgendaId ?? "").trim();
+  const only = Boolean(json.latestAgendaOnly);
+  if (only && aid) {
+    agendaHint.textContent = `표시: 최신 안건 1건 (안건 번호 ${aid})`;
+    agendaHint.classList.remove("hidden");
+  } else if (only && !aid) {
+    agendaHint.textContent = "표시: 최신 안건 1건 (안건 번호 미기재 응답만)";
+    agendaHint.classList.remove("hidden");
+  }
 }
 
 function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
@@ -3576,8 +3642,9 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
   if (!proEl || !opEl) return;
 
   if (!json) {
-    renderVoteTallyBarGroup(proEl, "찬반", []);
-    renderVoteTallyBarGroup(opEl, "의견·항목 선택", []);
+    setVoteTallyAgendaHint(null);
+    renderVoteTallyProConVerticalBars(proEl, []);
+    renderVoteTallyOpinionHorizontal(opEl, []);
     if (statusEl) {
       statusEl.textContent =
         loadError ||
@@ -3588,14 +3655,16 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
 
   const st = String(json.status ?? "").toLowerCase();
   if (st === "error") {
-    renderVoteTallyBarGroup(proEl, "찬반", []);
-    renderVoteTallyBarGroup(opEl, "의견·항목 선택", []);
+    setVoteTallyAgendaHint(null);
+    renderVoteTallyProConVerticalBars(proEl, []);
+    renderVoteTallyOpinionHorizontal(opEl, []);
     if (statusEl) statusEl.textContent = String(json.error || json.message || "오류");
     return;
   }
   if (json.ok === false) {
-    renderVoteTallyBarGroup(proEl, "찬반", []);
-    renderVoteTallyBarGroup(opEl, "의견·항목 선택", []);
+    setVoteTallyAgendaHint(null);
+    renderVoteTallyProConVerticalBars(proEl, []);
+    renderVoteTallyOpinionHorizontal(opEl, []);
     if (statusEl) {
       statusEl.textContent = String(
         json.message || json.error || "집계에 실패했습니다."
@@ -3604,10 +3673,11 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
     return;
   }
 
+  setVoteTallyAgendaHint(json);
   const proRows = normalizeVoteTallyRows(json.proCon);
   const opRows = normalizeVoteTallyRows(json.opinionChoice);
-  renderVoteTallyBarGroup(proEl, "찬반", proRows);
-  renderVoteTallyBarGroup(opEl, "의견·항목 선택", opRows);
+  renderVoteTallyProConVerticalBars(proEl, proRows);
+  renderVoteTallyOpinionHorizontal(opEl, opRows);
 
   const proTotal = proRows.reduce((s, r) => s + r.count, 0);
   const opTotal = opRows.reduce((s, r) => s + r.count, 0);

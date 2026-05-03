@@ -1,7 +1,7 @@
 /**
  * 의성김씨 아천문중 세보 - 통합 엔진 (로컬 apps-script/Code.gs 백업본)
  * - search / person(getDetail) / getTree / kinship / eightKin
- * - notice / property / voteResponse / voteTally (응답 시트 D·F열 집계)
+ * - notice / property / voteResponse / voteTally (열은 속성 B/D 등; 안건 열 있으면 최신 안건 1건만 집계)
  * - genRange(min,max): 1-10세 전용 트리 데이터 (형제 포함)
  * - vote: 안건 JSON (Script Properties 또는 voteAgenda 시트)
  * - history / movements: 시트 history, movements
@@ -33,7 +33,7 @@ function doGet(e) {
     else if (action === "property") result = getPropertyList(p); // 시트: property
     else if (action === "voteResponse") result = getVoteResponseList(p); // 시트: voteResponse
     else if (action === "voteRespone") result = getVoteResponseList(p); // 오타 호환(같은 결과)
-    else if (action === "voteTally" || action === "voteSummary") result = getVoteTally_(p); // voteResponse D·F열 집계
+    else if (action === "voteTally" || action === "voteSummary") result = getVoteTally_(p); // 응답 시트 열은 속성으로 지정
     // 가계도 1-10세 전용 데이터
     else if (action === "genRange") result = getGenRange(p); // people 시트에서 세손 구간(+형제)
     // PWA: 문중원투표 안건 / 연혁 / 지도 마커
@@ -97,15 +97,59 @@ function getSpreadsheetForVoteTally_() {
 /**
  * GET action=voteTally (또는 voteSummary)
  * 1행 헤더, 2행부터 집계. 열·탭은 폼 질문 순서마다 다름 → 스크립트 속성으로 맞춤.
+ * 안건 번호 열(VOTE_TALLY_COL_AGENDA)에 값이 하나라도 있으면, 타임스탬프 열(A 기본)이
+ * 가장 늦은 행의 안건 번호만 집계한다(쿼리 agendaId 가 없을 때). 안건 열이 모두 비어 있으면 전체 행 집계(구버전 호환).
  *
  * 예) 탭「설문지 응답 시트6」: B=항목/의견 선택, D=찬성/반대 →
  *   VOTE_RESPONSE_SHEET_NAME = 설문지 응답 시트6
  *   VOTE_TALLY_COL_OPINION = 2   (B)
  *   VOTE_TALLY_COL_PRO = 4       (D)
+ *   VOTE_TALLY_COL_TIMESTAMP = 1 (A, 최신 안건 판별용 — 생략 시 1)
  * 통합문서 ID(URL /d/뒤): VOTE_TALLY_SPREADSHEET_ID (스크립트가 이 파일에 안 붙어 있을 때)
  *
  * 구형 수동 시트(voteResponse 탭, D·F열)는 속성 없을 때 기본값과 맞출 수 있음.
  */
+/** 시트 셀을 밀리초로 (구글 시트 Date 또는 파싱 가능한 문자열) */
+function parseVoteTallyCellTime_(val) {
+  if (val instanceof Date && !isNaN(val.getTime())) return val.getTime();
+  const s = String(val || "").trim();
+  if (!s) return null;
+  const d = new Date(s);
+  return !isNaN(d.getTime()) ? d.getTime() : null;
+}
+
+/**
+ * 응답 시트에서「최신 안건」한 건만 집계하기 위해 agendaId 결정.
+ * 1) 타임스탬프 열이 있으면 가장 늦은 시각의 행의 안건번호
+ * 2) 없으면 시트 하단(최근 추가 행)부터 비어 있지 않은 첫 행의 안건번호
+ */
+function resolveLatestVoteAgendaId_(data, ixAgenda, ixTime) {
+  if (!data || data.length < 2) return "";
+  var bestTime = null;
+  var agendaAtBest = "";
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    var t = ixTime >= 0 ? parseVoteTallyCellTime_(row[ixTime]) : null;
+    var ag = String(row[ixAgenda] || "").trim();
+    if (t != null) {
+      if (bestTime == null || t >= bestTime) {
+        bestTime = t;
+        agendaAtBest = ag;
+      }
+    }
+  }
+  if (bestTime != null) return agendaAtBest;
+  for (var bottom = data.length - 1; bottom >= 1; bottom--) {
+    var rowB = data[bottom];
+    var isEmpty = rowB.every(function (x) {
+      return String(x ?? "").trim() === "";
+    });
+    if (isEmpty) continue;
+    return String(rowB[ixAgenda] || "").trim();
+  }
+  return "";
+}
+
 function getVoteTally_(p) {
   var props = PropertiesService.getScriptProperties();
   var sheetName = String(props.getProperty("VOTE_RESPONSE_SHEET_NAME") || "voteResponse").trim();
@@ -114,12 +158,15 @@ function getVoteTally_(p) {
   /* 구글 폼 응답: 항목 선택이 B열인 경우가 많아 기본 2. 수동 voteResponse F열이면 속성에 6 */
   var colOp = parseInt(String(props.getProperty("VOTE_TALLY_COL_OPINION") || "2"), 10);
   var colAgenda = parseInt(String(props.getProperty("VOTE_TALLY_COL_AGENDA") || "5"), 10);
+  var colTime = parseInt(String(props.getProperty("VOTE_TALLY_COL_TIMESTAMP") || "1"), 10);
   if (!colPro || colPro < 1) colPro = 4;
   if (!colOp || colOp < 1) colOp = 2;
   if (!colAgenda || colAgenda < 1) colAgenda = 5;
+  if (!colTime || colTime < 1) colTime = 1;
   var ixPro = colPro - 1;
   var ixOp = colOp - 1;
   var ixAgenda = colAgenda - 1;
+  var ixTime = colTime - 1;
 
   var ss = getSpreadsheetForVoteTally_();
   if (ss && ss.__openError) {
@@ -142,13 +189,26 @@ function getVoteTally_(p) {
       sheet: sheetName,
     };
   }
-  const agendaFilter = String((p && p.agendaId) || "").trim();
+  const paramAgenda = String((p && p.agendaId) || "").trim();
   const data = sh.getDataRange().getValues();
+  var hasAnyAgenda = false;
+  for (var ha = 1; ha < data.length; ha++) {
+    if (String(data[ha][ixAgenda] || "").trim()) {
+      hasAnyAgenda = true;
+      break;
+    }
+  }
+  var latestAgendaId = paramAgenda;
+  if (!latestAgendaId) {
+    latestAgendaId = resolveLatestVoteAgendaId_(data, ixAgenda, ixTime);
+  }
   const proCon = {};
   const opinionChoice = {};
   for (var r = 1; r < data.length; r++) {
     var row = data[r];
-    if (agendaFilter && String(row[ixAgenda] || "").trim() !== agendaFilter) continue;
+    if (hasAnyAgenda) {
+      if (String(row[ixAgenda] || "").trim() !== latestAgendaId) continue;
+    }
     var pc = String(row[ixPro] || "").trim();
     var oc = String(row[ixOp] || "").trim();
     if (pc) proCon[pc] = (proCon[pc] || 0) + 1;
@@ -159,6 +219,8 @@ function getVoteTally_(p) {
     proCon: proCon,
     opinionChoice: opinionChoice,
     sheet: sheetName,
+    latestAgendaId: latestAgendaId,
+    latestAgendaOnly: !paramAgenda && hasAnyAgenda,
   };
 }
 
