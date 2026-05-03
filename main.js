@@ -3328,6 +3328,17 @@ function mountClanSheetEditorLinks() {
 const CLAN_VOTE_GOOGLE_FORM_EMBED_URL =
   "https://docs.google.com/forms/d/1MfnFqlwwZsRFvtPn4z6M0q-0lDFs4iI0a6q9LnIFNHU/viewform?embedded=true";
 
+/**
+ * 구글 설문 응답 시트(VoteResponse 등) 데이터 열 — 집계·차트 API 구현 시 사용.
+ * 헤더는 1행만 사용하고, 응답 데이터는 2행부터.
+ */
+const CLAN_VOTE_RESPONSE_SHEET_COL = {
+  /** 찬반 */
+  proCon: "D",
+  /** 항목 / 의견 선택 */
+  opinionChoice: "F",
+};
+
 function mountClanVoteGoogleForm() {
   const iframe = document.getElementById("clan-vote-form-embed");
   const hint = document.getElementById("vote-hint");
