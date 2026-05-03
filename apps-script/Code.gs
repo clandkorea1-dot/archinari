@@ -108,6 +108,8 @@ function getSpreadsheetForVoteTally_() {
  *   VOTE_TALLY_COL_QUESTION_ID = 2     (B와 동일이면 질문 ID 필터 없음 → B 헤더가 제목)
  *   VOTE_TALLY_COL_AGENDA = 5          (E, 선택)
  * (별도 B=질문 ID·C=선택 인 폼이면 속성으로 열만 바꿈.)
+ * 응답 시트 1행: B1=의견/안건 질문 헤더, D1=찬반 질문 헤더(구글 폼 내보내기 기준).
+ * 본문 응답은 2행부터이며, B14·B15 등은 시트·폼마다 다름(집계는 열 전체).
  * 질문 ID → 표시 문장: Script Properties 의 JSON 키 VOTE_QUESTION_TEXT_JSON (예: {"Q1":"문장..."}),
  *   또는 통합문서 시트 voteQuestionMap (A열 ID, B열 문장). 없으면 선택 열 헤더(1행)를 문장으로 사용.
  *   VOTE_TALLY_COL_TIMESTAMP = 1 (A, 최신 안건·최신 질문 ID 판별)
@@ -463,6 +465,11 @@ function getVoteTally_(p) {
     proCon: colPro,
     agenda: colAgenda,
   };
+  /** 응답 시트 1행: B1=안건·의견 질문 헤더, D1=찬반 질문 헤더(열 번호는 tallyColumns 와 일치) */
+  var cellB1 =
+    data[0] && data[0][1] != null ? String(data[0][1]).trim() : "";
+  var cellD1 =
+    data[0] && data[0][ixPro] != null ? String(data[0][ixPro]).trim() : "";
   var out = {
     ok: true,
     proCon: proCon,
@@ -474,6 +481,10 @@ function getVoteTally_(p) {
     questionSentence: questionSentence,
     tallyColumns: tallyColumns,
     agendaFilterDisabled: disableAgenda,
+    voteSheetTitles: {
+      b1: cellB1,
+      d1: cellD1,
+    },
   };
   var wantDebug = p && String(p.debug || "").trim() === "1";
   if (wantDebug && headerRow.length) {

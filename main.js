@@ -3535,24 +3535,33 @@ function sortTallyByCountDesc(rows) {
 
 const VOTE_TALLY_BAR_COLORS = ["bg-wine/90", "bg-seal/85", "bg-emerald-800/80"];
 
-/** 하단 블록: D열 찬반 → 세로 막대 최대 2개,「찬반」레이블은 막대 아래 */
-function renderVoteTallyProConVerticalBars(container, rows) {
+/**
+ * 하단 블록: D열 찬반 막대. 구역 제목은 시트 D1(찬반 질문·안건 제목)만 사용, 「찬반」 고정 문구 없음.
+ */
+function renderVoteTallyProConVerticalBars(container, rows, proSectionTitleFromD1) {
   if (!container) return;
   container.innerHTML = "";
+  const sectionTitle = String(proSectionTitleFromD1 ?? "").trim();
+
+  function appendSectionHeading() {
+    const h = document.createElement("div");
+    h.className =
+      "mb-2 max-w-full px-0.5 text-center text-[12px] font-semibold leading-snug text-ink-900";
+    h.textContent = sectionTitle || "찬성·반대";
+    container.appendChild(h);
+  }
 
   const sorted = sortTallyByCountDesc(rows);
   if (!sorted.length) {
+    appendSectionHeading();
     const p = document.createElement("p");
     p.className = "w-full text-center text-[11px] text-stone-500";
-    p.textContent = "찬반 응답 없음";
+    p.textContent = "응답 없음";
     container.appendChild(p);
-    const footEmpty = document.createElement("div");
-    footEmpty.className =
-      "mt-2 text-center text-[10px] font-bold uppercase tracking-wide text-stone-500";
-    footEmpty.textContent = "찬반";
-    container.appendChild(footEmpty);
     return;
   }
+
+  appendSectionHeading();
 
   const a = sorted[0] || { label: "", count: 0 };
   const b = sorted[1] || { label: "", count: 0 };
@@ -3587,27 +3596,42 @@ function renderVoteTallyProConVerticalBars(container, rows) {
     bars.appendChild(col);
   });
   container.appendChild(bars);
-
-  const foot = document.createElement("div");
-  foot.className =
-    "mt-2 w-full text-center text-[10px] font-bold uppercase tracking-wide text-stone-500";
-  foot.textContent = "찬반";
-  container.appendChild(foot);
 }
 
 /**
- * 상단 블록: 질문 문장(questionSentence) + 선택지별 인원, 항목마다 한 줄.
+ * 상단 블록: 시트 B1(안건·맥락) + 질문 문장 + 선택지별 인원, 항목마다 한 줄.
+ * @param {{ b1?: string, d1?: string }} [voteSheetTitles] API voteSheetTitles
  */
-function renderVoteTallyOpinionHorizontal(container, rows, questionSentence) {
+function renderVoteTallyOpinionHorizontal(
+  container,
+  rows,
+  questionSentence,
+  voteSheetTitles
+) {
   if (!container) return;
   container.innerHTML = "";
+  const b1 = String(voteSheetTitles?.b1 ?? "").trim();
   const title = String(questionSentence ?? "").trim();
+
+  if (b1 && b1 !== title) {
+    const cap = document.createElement("div");
+    cap.className =
+      "mb-1.5 text-[10px] font-medium leading-snug text-stone-500";
+    cap.textContent = b1;
+    container.appendChild(cap);
+  }
   if (title) {
     const head = document.createElement("div");
     head.className =
       "mb-2.5 text-[12px] font-semibold leading-snug text-ink-900";
     head.textContent = title;
     container.appendChild(head);
+  } else if (b1) {
+    const headOnly = document.createElement("div");
+    headOnly.className =
+      "mb-2.5 text-[12px] font-semibold leading-snug text-ink-900";
+    headOnly.textContent = b1;
+    container.appendChild(headOnly);
   }
 
   const list = sortTallyByCountDesc(rows);
@@ -3655,8 +3679,8 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
 
   if (!json) {
     setVoteTallyAgendaHint(null);
-    renderVoteTallyProConVerticalBars(proEl, []);
-    renderVoteTallyOpinionHorizontal(opEl, [], "");
+    renderVoteTallyProConVerticalBars(proEl, [], "");
+    renderVoteTallyOpinionHorizontal(opEl, [], "", null);
     if (statusEl) {
       statusEl.textContent =
         loadError ||
@@ -3668,15 +3692,15 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
   const st = String(json.status ?? "").toLowerCase();
   if (st === "error") {
     setVoteTallyAgendaHint(null);
-    renderVoteTallyProConVerticalBars(proEl, []);
-    renderVoteTallyOpinionHorizontal(opEl, [], "");
+    renderVoteTallyProConVerticalBars(proEl, [], "");
+    renderVoteTallyOpinionHorizontal(opEl, [], "", null);
     if (statusEl) statusEl.textContent = String(json.error || json.message || "오류");
     return;
   }
   if (json.ok === false) {
     setVoteTallyAgendaHint(null);
-    renderVoteTallyProConVerticalBars(proEl, []);
-    renderVoteTallyOpinionHorizontal(opEl, [], "");
+    renderVoteTallyProConVerticalBars(proEl, [], "");
+    renderVoteTallyOpinionHorizontal(opEl, [], "", null);
     if (statusEl) {
       statusEl.textContent = String(
         json.message || json.error || "집계에 실패했습니다."
@@ -3689,8 +3713,13 @@ function renderVoteTallyPanel(json, proEl, opEl, statusEl, loadError) {
   const proRows = normalizeVoteTallyRows(json.proCon);
   const opRows = normalizeVoteTallyRows(json.opinionChoice);
   const questionSentence = String(json.questionSentence ?? "").trim();
-  renderVoteTallyProConVerticalBars(proEl, proRows);
-  renderVoteTallyOpinionHorizontal(opEl, opRows, questionSentence);
+  const voteSheetTitles =
+    json.voteSheetTitles && typeof json.voteSheetTitles === "object"
+      ? json.voteSheetTitles
+      : null;
+  const d1Title = String(voteSheetTitles?.d1 ?? "").trim();
+  renderVoteTallyProConVerticalBars(proEl, proRows, d1Title);
+  renderVoteTallyOpinionHorizontal(opEl, opRows, questionSentence, voteSheetTitles);
 
   const proTotal = proRows.reduce((s, r) => s + r.count, 0);
   const opTotal = opRows.reduce((s, r) => s + r.count, 0);
