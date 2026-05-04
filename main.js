@@ -34,6 +34,14 @@ function debugLog(title, payload) {
     `${debugLogEl.textContent}\n[${ts}] ${title}\n${body}\n`.trimStart();
 }
 
+/** 스크롤로 헤더가 위로 지나간 뒤에는 전체화면 오버레이 상단을 0에 가깝게 둔다. */
+function getAppHeaderOverlayTopPx() {
+  const hdr = document.getElementById("app-header");
+  if (!hdr) return 0;
+  const r = hdr.getBoundingClientRect();
+  return Math.max(0, Math.round(r.bottom));
+}
+
 // 상단 날짜 스탬프(디자인용)
 try {
   const el = document.getElementById("today-stamp");
@@ -3975,6 +3983,16 @@ form.addEventListener("submit", async (e) => {
 let closeMapFpInfographicFullscreen = () => {};
 
 function showView(viewId) {
+  try {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  } catch {
+    try {
+      window.scrollTo(0, 0);
+    } catch {
+      // ignore
+    }
+  }
+
   if (viewId !== "view-map") {
     try {
       closeMapFpInfographicFullscreen();
@@ -3994,16 +4012,18 @@ function showView(viewId) {
     el.classList.toggle("hidden", el.id !== viewId);
   });
 
-  const hdrMap = {
-    "view-home": "hdr-tab-home",
-    "view-tree": "hdr-tab-tree",
-    "view-map": "hdr-tab-map",
-    "view-more": "hdr-tab-more",
+  const navTabIds = {
+    "view-home": ["hdr-tab-home", "ftr-tab-home"],
+    "view-tree": ["hdr-tab-tree", "ftr-tab-tree"],
+    "view-map": ["hdr-tab-map", "ftr-tab-map"],
+    "view-more": ["hdr-tab-more", "ftr-tab-more"],
   };
-  Object.entries(hdrMap).forEach(([v, id]) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.dataset.active = v === viewId ? "true" : "false";
+  Object.entries(navTabIds).forEach(([v, ids]) => {
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.dataset.active = v === viewId ? "true" : "false";
+    });
   });
 
   // 페이지별 헤더 서브메뉴(홈은 숨김)
@@ -4040,14 +4060,19 @@ function showView(viewId) {
 
 function initHeaderTabs() {
   const byId = (id) => document.getElementById(id);
-  byId("hdr-tab-home")?.addEventListener("click", () => showView("view-home"));
-  byId("hdr-tab-tree")?.addEventListener("click", () => {
+  const goHome = () => showView("view-home");
+  const goTree = () => {
     // (요청) 헤더의 "가계도"로 진입하면 항상 1-10세부터 보여준다.
     setTreeGenFilter(1, 10);
     showView("view-tree");
-  });
-  byId("hdr-tab-map")?.addEventListener("click", () => showView("view-map"));
-  byId("hdr-tab-more")?.addEventListener("click", () => showView("view-more"));
+  };
+  const goMap = () => showView("view-map");
+  const goMore = () => showView("view-more");
+
+  ["hdr-tab-home", "ftr-tab-home"].forEach((id) => byId(id)?.addEventListener("click", goHome));
+  ["hdr-tab-tree", "ftr-tab-tree"].forEach((id) => byId(id)?.addEventListener("click", goTree));
+  ["hdr-tab-map", "ftr-tab-map"].forEach((id) => byId(id)?.addEventListener("click", goMap));
+  ["hdr-tab-more", "ftr-tab-more"].forEach((id) => byId(id)?.addEventListener("click", goMore));
 
   // 헤더 서브메뉴 버튼 동작
   document.getElementById("hdr-submenu")?.addEventListener("click", (e) => {
@@ -4553,9 +4578,7 @@ function bindMapFpInfographicFullscreen(opts) {
   };
 
   const applyModalOffsets = () => {
-    const hdr = document.getElementById("app-header");
-    const h = hdr ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
-    modal.style.top = `${h}px`;
+    modal.style.top = `${getAppHeaderOverlayTopPx()}px`;
     modal.style.bottom = "0px";
   };
 
@@ -4675,9 +4698,7 @@ function initMapFullscreen() {
   };
 
   const applyModalOffsets = () => {
-    const hdr = document.getElementById("app-header");
-    const h = hdr ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
-    modal.style.top = `${h}px`;
+    modal.style.top = `${getAppHeaderOverlayTopPx()}px`;
     modal.style.bottom = "0px";
   };
 
@@ -5371,10 +5392,8 @@ function initMoreExpanders() {
   let moved = null; // { key, node, placeholder, wasCollapsed, btn, tally?, tallyPlaceholder? }
 
   const applyModalOffsets = () => {
-    const hdr = document.getElementById("app-header");
-    const h = hdr ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
-    // 헤더/하단탭은 그대로 두고, 그 사이만 전체화면으로 사용
-    modal.style.top = `${h}px`;
+    // 스크롤로 헤더가 사라지면 뷰포트 기준으로 남는 상단만 확보
+    modal.style.top = `${getAppHeaderOverlayTopPx()}px`;
     modal.style.bottom = `0px`;
   };
 

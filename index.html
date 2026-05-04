@@ -79,13 +79,13 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
     />
-    <link rel="stylesheet" href="style.css?v=20260503-fab-sm" />
+    <link rel="stylesheet" href="style.css?v=20260505-scroll-nav" />
   </head>
   <body class="min-h-screen bg-paper pb-6 text-ink-900 antialiased">
     <!-- 공통 고정 헤더(새 헤더): 기존 헤더 내용을 이 박스로 이동 -->
     <header
       id="app-header"
-      class="sticky top-0 z-50 overflow-hidden border-b border-wine/35 bg-paper/95 backdrop-blur-sm"
+      class="relative z-10 overflow-hidden border-b border-wine/35 bg-paper/95 backdrop-blur-sm"
     >
       <div class="mx-auto max-w-lg px-4 pt-3 sm:px-6">
         <!-- 어제 밤 “세보검색” 박스를 헤더로 고정 -->
@@ -503,7 +503,7 @@
       <div id="view-map" class="view-panel hidden -mt-1 flex flex-col pb-10">
         <div
           id="map-stage"
-          class="relative w-full scroll-mt-[88px] overflow-hidden rounded-2xl border border-wine/35 bg-white shadow-sm"
+          class="relative w-full scroll-mt-4 overflow-hidden rounded-2xl border border-wine/35 bg-white shadow-sm"
           style="aspect-ratio: 4 / 3; max-height: min(52vh, 380px)"
         >
           <div
@@ -628,7 +628,7 @@
             <span class="fp-embed-section-toolbar-title">대동보</span>
           </div>
           <div
-            class="fp-embed-stage fp-embed-stage--gen11 scroll-mt-[88px]"
+            class="fp-embed-stage fp-embed-stage--gen11 scroll-mt-4"
             id="fp2-embed-stage"
             role="group"
             aria-label="대동보 보기"
@@ -871,6 +871,62 @@
       </div>
     </div>
 
+    <footer
+      id="app-footer-nav"
+      class="app-footer-nav relative z-10 border-t border-wine/35 bg-paper/95 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-sm"
+      aria-label="페이지 하단 메뉴"
+    >
+      <div class="mx-auto max-w-lg px-4 sm:px-6">
+        <div class="overflow-hidden rounded-2xl border border-wine/38 bg-[#f3efe4] shadow-sm">
+          <div class="grid grid-cols-4 text-xs text-stone-700">
+            <button
+              type="button"
+              id="ftr-tab-home"
+              class="ftr-vdiv flex items-center justify-center gap-1 px-2 py-3 font-medium text-stone-600 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
+              data-active="true"
+              aria-label="홈"
+            >
+              <span class="material-symbols-outlined align-[-6px] text-[18px]" aria-hidden="true">home</span>
+              <span>홈</span>
+            </button>
+            <button
+              type="button"
+              id="ftr-tab-tree"
+              class="ftr-vdiv flex items-center justify-center gap-1 px-2 py-3 font-medium text-stone-600 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
+              data-active="false"
+              aria-label="가계도"
+            >
+              <span class="material-symbols-outlined align-[-6px] text-[18px]" aria-hidden="true">account_tree</span>
+              <span>가계도</span>
+            </button>
+            <button
+              type="button"
+              id="ftr-tab-map"
+              class="ftr-vdiv flex items-center justify-center gap-1 px-2 py-3 font-medium text-stone-600 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
+              data-active="false"
+              aria-label="선조의 발자취"
+            >
+              <span class="material-symbols-outlined align-[-6px] text-[18px]" aria-hidden="true">travel_explore</span>
+              <span>발자취</span>
+            </button>
+            <button
+              type="button"
+              id="ftr-tab-more"
+              class="flex items-center justify-center gap-1 px-2 py-3 font-medium text-stone-600 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
+              data-active="false"
+              aria-label="아천문중"
+            >
+              <span class="material-symbols-outlined align-[-6px] text-[18px]" aria-hidden="true">menu_book</span>
+              <span class="inline-flex flex-col items-center justify-center gap-0 text-[10px] leading-[1.15] tracking-tight">
+                <span class="block whitespace-nowrap">아천</span>
+                <span class="block whitespace-nowrap">문중</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </footer>
+
     <!-- 아천문중: 박스 내용 전체화면(모바일: 헤더/하단탭 제외) -->
     <div id="more-fullscreen" class="more-fullscreen hidden" aria-hidden="true">
       <div class="more-fullscreen-panel" role="dialog" aria-modal="true" aria-labelledby="more-fullscreen-title">
@@ -932,7 +988,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="main.js?v=20260503-wine-outline"></script>
+    <script src="main.js?v=20260505-scroll-nav"></script>
   </body>
 </html>
 

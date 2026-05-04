@@ -1105,6 +1105,9 @@
 #app-header .hdr-vdiv:not(:last-child) {
   border-right: 1px solid var(--outline-wine-strong);
 }
+#app-footer-nav .ftr-vdiv:not(:last-child) {
+  border-right: 1px solid var(--outline-wine-strong);
+}
 #app-header .hdr-subbtn {
   border: 1px solid rgba(139, 41, 66, 0.38);
   background: rgba(255, 255, 255, 0.5);
@@ -2581,10 +2584,10 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 100%, 0 100%);
 }
 
-/* 헤더(sticky) + 4탭 + 서브메뉴 한 줄을 가리지 않도록 스크롤 앵커 여백 */
+/* 앵커 스크롤 시 상단에 약간의 여백(헤더는 스크롤과 함께 이동) */
 #view-more .more-bento-cell {
   padding: 1rem 0.9rem 1.1rem;
-  scroll-margin-top: max(11.25rem, 180px);
+  scroll-margin-top: 0.75rem;
   position: relative;
   padding-bottom: 2.55rem; /* 하단 세로막대 버튼 자리 */
 }
@@ -2697,9 +2700,9 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
 }
 
 #view-more #vote-body {
-  scroll-margin-top: 6.25rem;
+  scroll-margin-top: 0.75rem;
 }
 
 #view-more #vote-tally-wrap {
-  scroll-margin-top: 6.25rem;
+  scroll-margin-top: 0.75rem;
 }
