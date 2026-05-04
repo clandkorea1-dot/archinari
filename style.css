@@ -2589,6 +2589,31 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   padding-bottom: 2.55rem; /* 하단 세로막대 버튼 자리 */
 }
 
+/* 문중원투표: 크게 보기는 상단 우측 — 하단 FAB 자리 불필요 */
+#view-more #more-vote.more-bento-cell--vote {
+  padding-bottom: 1.1rem;
+}
+
+#view-more #more-vote .more-vote-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+#view-more #more-vote .more-vote-topbar .more-bento-section-kick {
+  flex: 1;
+  min-width: 0;
+}
+
+#view-more #more-vote .more-expand-dock--vote-top {
+  position: static;
+  right: auto;
+  bottom: auto;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
 #view-more .more-bento-foot {
   border-top: 1px dashed var(--bento-wine);
   padding: 0.5rem 0.65rem;
