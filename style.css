@@ -1105,9 +1105,6 @@
 #app-header .hdr-vdiv:not(:last-child) {
   border-right: 1px solid var(--outline-wine-strong);
 }
-#app-footer-nav .ftr-vdiv:not(:last-child) {
-  border-right: 1px solid var(--outline-wine-strong);
-}
 #app-header .hdr-subbtn {
   border: 1px solid rgba(139, 41, 66, 0.38);
   background: rgba(255, 255, 255, 0.5);
@@ -2622,10 +2619,13 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   padding: 0.5rem 0.65rem;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
   background: rgba(255, 255, 255, 0.22);
 }
 
-#view-more .more-bento-topbtn {
+#view-more .more-bento-topbtn,
+.page-back-top-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2633,16 +2633,22 @@ body[data-yesterday-ui="1"] .grid-paper-dash {
   height: 2.25rem;
   border: 1px solid var(--outline-wine-strong);
   background: rgba(255, 255, 255, 0.55);
-  color: var(--bento-ink);
+  color: var(--ink-800, #2c2825);
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
-#view-more .more-bento-topbtn:hover {
+#view-more .more-bento-topbtn {
+  color: var(--bento-ink);
+}
+
+#view-more .more-bento-topbtn:hover,
+.page-back-top-btn:hover {
   background: rgba(255, 255, 255, 0.85);
 }
 
-#view-more .more-bento-topbtn:active {
+#view-more .more-bento-topbtn:active,
+.page-back-top-btn:active {
   transform: translateY(1px);
 }
 

@@ -79,7 +79,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
     />
-    <link rel="stylesheet" href="style.css?v=20260505-scroll-nav" />
+    <link rel="stylesheet" href="style.css?v=20260505-back-top" />
   </head>
   <body class="min-h-screen bg-paper pb-6 text-ink-900 antialiased">
     <!-- 공통 고정 헤더(새 헤더): 기존 헤더 내용을 이 박스로 이동 -->
@@ -397,6 +397,13 @@
         <p class="mt-8 text-center text-xs text-stone-500">
           아천문중 세보 · 정적 서버로 열면 API 연동이 안정적입니다.
         </p>
+
+        <div class="page-back-top-foot mt-6 flex items-center justify-end gap-2 border-t border-dashed border-wine/35 pt-3 pb-1">
+          <span class="page-back-top-label text-[12px] font-medium text-stone-600">맨위로</span>
+          <button type="button" class="more-bento-topbtn page-back-top-btn" data-page-back-top aria-label="이 페이지 맨 위로">
+            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">arrow_upward</span>
+          </button>
+        </div>
       </div>
 
       <!-- 가계도 -->
@@ -496,6 +503,13 @@
               <div id="tree-gen32-detail" class="tree-gen32-detail-host mt-3 min-h-[220px]"></div>
             </div>
           </section>
+        </div>
+
+        <div class="page-back-top-foot mt-6 flex items-center justify-end gap-2 border-t border-dashed border-wine/35 pt-3 pb-1">
+          <span class="page-back-top-label text-[12px] font-medium text-stone-600">맨위로</span>
+          <button type="button" class="more-bento-topbtn page-back-top-btn" data-page-back-top aria-label="이 페이지 맨 위로">
+            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">arrow_upward</span>
+          </button>
         </div>
       </div>
 
@@ -651,6 +665,13 @@
             </div>
           </div>
         </section>
+
+        <div class="page-back-top-foot mt-6 flex items-center justify-end gap-2 border-t border-dashed border-wine/35 pt-3 pb-1">
+          <span class="page-back-top-label text-[12px] font-medium text-stone-600">맨위로</span>
+          <button type="button" class="more-bento-topbtn page-back-top-btn" data-page-back-top aria-label="이 페이지 맨 위로">
+            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">arrow_upward</span>
+          </button>
+        </div>
       </div>
 
       <!-- 아천문중: 벤토 그리드(첨부 레퍼런스 톤) — 헤더 4칸 서브메뉴 구조는 유지 -->
@@ -862,70 +883,15 @@
             </ul>
           </section>
 
-          <div class="more-bento-foot">
-            <button type="button" class="more-bento-topbtn" id="more-back-top" aria-label="이 페이지 맨 위로">
-              <span class="material-symbols-outlined text-[20px]">arrow_upward</span>
+          <div class="more-bento-foot page-back-top-foot">
+            <span class="page-back-top-label text-[12px] font-medium text-stone-600">맨위로</span>
+            <button type="button" class="more-bento-topbtn page-back-top-btn" data-page-back-top aria-label="이 페이지 맨 위로">
+              <span class="material-symbols-outlined text-[20px]" aria-hidden="true">arrow_upward</span>
             </button>
           </div>
         </div>
       </div>
     </div>
-
-    <footer
-      id="app-footer-nav"
-      class="app-footer-nav relative z-10 border-t border-wine/35 bg-paper/95 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-sm"
-      aria-label="페이지 하단 메뉴"
-    >
-      <div class="mx-auto max-w-lg px-4 sm:px-6">
-        <div class="overflow-hidden rounded-2xl border border-wine/38 bg-[#f3efe4] shadow-sm">
-          <div class="grid grid-cols-4 text-xs text-stone-700">
-            <button
-              type="button"
-              id="ftr-tab-home"
-              class="ftr-vdiv flex items-center justify-center gap-1 px-2 py-3 font-medium text-stone-600 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
-              data-active="true"
-              aria-label="홈"
-            >
-              <span class="material-symbols-outlined align-[-6px] text-[18px]" aria-hidden="true">home</span>
-              <span>홈</span>
-            </button>
-            <button
-              type="button"
-              id="ftr-tab-tree"
-              class="ftr-vdiv flex items-center justify-center gap-1 px-2 py-3 font-medium text-stone-600 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
-              data-active="false"
-              aria-label="가계도"
-            >
-              <span class="material-symbols-outlined align-[-6px] text-[18px]" aria-hidden="true">account_tree</span>
-              <span>가계도</span>
-            </button>
-            <button
-              type="button"
-              id="ftr-tab-map"
-              class="ftr-vdiv flex items-center justify-center gap-1 px-2 py-3 font-medium text-stone-600 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
-              data-active="false"
-              aria-label="선조의 발자취"
-            >
-              <span class="material-symbols-outlined align-[-6px] text-[18px]" aria-hidden="true">travel_explore</span>
-              <span>발자취</span>
-            </button>
-            <button
-              type="button"
-              id="ftr-tab-more"
-              class="flex items-center justify-center gap-1 px-2 py-3 font-medium text-stone-600 transition data-[active=true]:bg-seal/10 data-[active=true]:text-seal"
-              data-active="false"
-              aria-label="아천문중"
-            >
-              <span class="material-symbols-outlined align-[-6px] text-[18px]" aria-hidden="true">menu_book</span>
-              <span class="inline-flex flex-col items-center justify-center gap-0 text-[10px] leading-[1.15] tracking-tight">
-                <span class="block whitespace-nowrap">아천</span>
-                <span class="block whitespace-nowrap">문중</span>
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </footer>
 
     <!-- 아천문중: 박스 내용 전체화면(모바일: 헤더/하단탭 제외) -->
     <div id="more-fullscreen" class="more-fullscreen hidden" aria-hidden="true">
@@ -988,7 +954,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="main.js?v=20260505-scroll-nav"></script>
+    <script src="main.js?v=20260505-back-top"></script>
   </body>
 </html>
 

@@ -4012,18 +4012,16 @@ function showView(viewId) {
     el.classList.toggle("hidden", el.id !== viewId);
   });
 
-  const navTabIds = {
-    "view-home": ["hdr-tab-home", "ftr-tab-home"],
-    "view-tree": ["hdr-tab-tree", "ftr-tab-tree"],
-    "view-map": ["hdr-tab-map", "ftr-tab-map"],
-    "view-more": ["hdr-tab-more", "ftr-tab-more"],
+  const hdrMap = {
+    "view-home": "hdr-tab-home",
+    "view-tree": "hdr-tab-tree",
+    "view-map": "hdr-tab-map",
+    "view-more": "hdr-tab-more",
   };
-  Object.entries(navTabIds).forEach(([v, ids]) => {
-    ids.forEach((id) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.dataset.active = v === viewId ? "true" : "false";
-    });
+  Object.entries(hdrMap).forEach(([v, id]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.dataset.active = v === viewId ? "true" : "false";
   });
 
   // 페이지별 헤더 서브메뉴(홈은 숨김)
@@ -4069,10 +4067,10 @@ function initHeaderTabs() {
   const goMap = () => showView("view-map");
   const goMore = () => showView("view-more");
 
-  ["hdr-tab-home", "ftr-tab-home"].forEach((id) => byId(id)?.addEventListener("click", goHome));
-  ["hdr-tab-tree", "ftr-tab-tree"].forEach((id) => byId(id)?.addEventListener("click", goTree));
-  ["hdr-tab-map", "ftr-tab-map"].forEach((id) => byId(id)?.addEventListener("click", goMap));
-  ["hdr-tab-more", "ftr-tab-more"].forEach((id) => byId(id)?.addEventListener("click", goMore));
+  byId("hdr-tab-home")?.addEventListener("click", goHome);
+  byId("hdr-tab-tree")?.addEventListener("click", goTree);
+  byId("hdr-tab-map")?.addEventListener("click", goMap);
+  byId("hdr-tab-more")?.addEventListener("click", goMore);
 
   // 헤더 서브메뉴 버튼 동작
   document.getElementById("hdr-submenu")?.addEventListener("click", (e) => {
@@ -4778,12 +4776,19 @@ function initMapFullscreen() {
   });
 }
 
-/** 아천문중 벤토 페이지: 맨 위로 */
-function initMorePageChrome() {
-  document.getElementById("more-back-top")?.addEventListener("click", () => {
-    document
-      .querySelector("#view-more .more-bento-hero-banner")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+/** 각 탭 하단 「맨위로」: 홈·가계도·발자취는 헤더로, 아천문중은 히어로 배너로 스크롤 */
+function initPageBackTopButtons() {
+  document.querySelectorAll("[data-page-back-top]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const panel = btn.closest(".view-panel");
+      if (panel?.id === "view-more") {
+        document
+          .querySelector("#view-more .more-bento-hero-banner")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      document.getElementById("app-header")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   });
 }
 
@@ -10762,7 +10767,7 @@ initPersonDetailActions();
 initHomeActions();
 initAcheonHeroBannerVideo();
 initHeaderTabs();
-initMorePageChrome();
+initPageBackTopButtons();
 initMoreExpanders();
 initTreeZoomHosts();
 initTreeMiniZoomButtons();
