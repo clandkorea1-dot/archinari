@@ -3546,6 +3546,31 @@ const VOTE_TALLY_BAR_COLORS = ["bg-wine/90", "bg-seal/85", "bg-emerald-800/80"];
 /**
  * 하단 블록: D열 찬반 막대. 구역 제목은 시트 D1(찬반 질문·안건 제목)만 사용, 「찬반」 고정 문구 없음.
  */
+function normalizeProConLabel_(rawLabel) {
+  const s = String(rawLabel ?? "").trim();
+  if (!s) return "";
+  const low = s.toLowerCase();
+  // 찬성 계열
+  if (/찬성/.test(s) || /^찬$/.test(s) || /approve|agree|yes\b|^y$|true/.test(low))
+    return "찬성";
+  // 반대 계열
+  if (/반대/.test(s) || /^반$/.test(s) || /oppose|disagree|no\b|^n$|false/.test(low))
+    return "반대";
+  return "";
+}
+
+function summarizeProCon_(rows) {
+  let pro = 0;
+  let con = 0;
+  for (const r of rows || []) {
+    const key = normalizeProConLabel_(r?.label);
+    const n = Math.max(0, Number(r?.count) || 0);
+    if (key === "찬성") pro += n;
+    else if (key === "반대") con += n;
+  }
+  return { pro, con };
+}
+
 function renderVoteTallyProConVerticalBars(container, rows, proSectionTitleFromD1) {
   if (!container) return;
   container.innerHTML = "";
@@ -3559,8 +3584,9 @@ function renderVoteTallyProConVerticalBars(container, rows, proSectionTitleFromD
     container.appendChild(h);
   }
 
-  const sorted = sortTallyByCountDesc(rows);
-  if (!sorted.length) {
+  const summary = summarizeProCon_(rows);
+  const total = summary.pro + summary.con;
+  if (!total) {
     appendSectionHeading();
     const p = document.createElement("p");
     p.className = "w-full text-center text-[11px] text-stone-500";
@@ -3571,10 +3597,11 @@ function renderVoteTallyProConVerticalBars(container, rows, proSectionTitleFromD
 
   appendSectionHeading();
 
-  const a = sorted[0] || { label: "", count: 0 };
-  const b = sorted[1] || { label: "", count: 0 };
-  const maxCount = Math.max(1, a.count, b.count);
-  const pair = [a, b];
+  const pair = [
+    { label: "찬성", count: summary.pro },
+    { label: "반대", count: summary.con },
+  ];
+  const maxCount = Math.max(1, summary.pro, summary.con);
 
   const bars = document.createElement("div");
   bars.className = "flex w-full items-end justify-center gap-6 sm:gap-10";
@@ -8687,6 +8714,17 @@ function collectSubtreeIdsFromRoot(rootId, annotatedItems) {
   return sub;
 }
 
+/** 32세 상단 명단: 부친 문중원ID 오름차순, 같은 부 아래는 본인 ID 오름차순. 부친 없음은 맨 뒤. */
+function compareGen32TopPickItems(a, b) {
+  const fa = String(pickFirstString(a.row, PARENT_ID_KEYS) || "").trim();
+  const fb = String(pickFirstString(b.row, PARENT_ID_KEYS) || "").trim();
+  if (!fa && fb) return 1;
+  if (fa && !fb) return -1;
+  const byFather = compareClanMemberIds(fa, fb);
+  if (byFather !== 0) return byFather;
+  return compareClanMemberIds(a.id, b.id);
+}
+
 function renderGen32TopPicks(people, selectedId) {
   const grid = document.getElementById("tree-gen32-pick-grid");
   const hint = document.getElementById("tree-gen32-top-hint");
@@ -8694,7 +8732,7 @@ function renderGen32TopPicks(people, selectedId) {
   const annotated = annotatePeople(Array.isArray(people) ? people : []);
   const list32 = annotated
     .filter((it) => readNodeGenLike(it.row) === 32)
-    .sort((a, b) => compareClanMemberIds(a.id, b.id));
+    .sort(compareGen32TopPickItems);
   if (hint) {
     hint.textContent = list32.length
       ? `총 ${list32.length}명 · 한 줄에 6명씩 배치됩니다(줄이 많으면 세로 스크롤).`
@@ -8780,7 +8818,7 @@ async function paintGen32PlusDualPanels() {
   const annotated = annotatePeople(lastGen32PanelPeople);
   const list32 = annotated
     .filter((it) => readNodeGenLike(it.row) === 32)
-    .sort((a, b) => compareClanMemberIds(a.id, b.id));
+    .sort(compareGen32TopPickItems);
   const pickSet = new Set(list32.map((p) => String(p.id)));
   if (!gen32SelectedRootId || !pickSet.has(String(gen32SelectedRootId))) {
     gen32SelectedRootId = list32[0] ? String(list32[0].id) : "";
