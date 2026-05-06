@@ -10798,6 +10798,74 @@ async function renderKinshipVisual(id1, id2, keyOpt = "") {
     </div>
     <p class="mt-2 text-[11px] text-stone-500">좌/우 최대 18명씩 표시합니다.</p>
   `;
+
+  // 모바일에서 스크롤바(thumb) 드래그가 불안정한 경우가 많아,
+  // 내용(카드 줄)을 드래그해서 가로 스크롤할 수 있게 보강한다.
+  wrap.querySelectorAll(".kinship-scroll").forEach((scroller) => {
+    if (scroller?.dataset?.dragScrollBound === "1") return;
+    scroller.dataset.dragScrollBound = "1";
+
+    let dragging = false;
+    let moved = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+
+    const end = () => {
+      dragging = false;
+      moved = false;
+      try {
+        scroller.style.cursor = "";
+      } catch {
+        // ignore
+      }
+    };
+
+    scroller.addEventListener("pointerdown", (e) => {
+      // 기본 페이지 스크롤(세로)은 유지하되, 가로 드래그 의도가 명확할 때만 잡는다.
+      dragging = true;
+      moved = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = scroller.scrollLeft;
+      try {
+        scroller.setPointerCapture?.(e.pointerId);
+      } catch {
+        // ignore
+      }
+      try {
+        scroller.style.cursor = "grabbing";
+      } catch {
+        // ignore
+      }
+    });
+
+    scroller.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!moved) {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        // 세로가 더 크면 페이지 스크롤로 넘긴다.
+        if (Math.abs(dy) > Math.abs(dx)) {
+          end();
+          return;
+        }
+        moved = true;
+      }
+      // 가로 드래그가 시작되면 기본 동작을 막아 스크롤이 튀지 않게 한다.
+      try {
+        e.preventDefault();
+      } catch {
+        // ignore
+      }
+      scroller.scrollLeft = startLeft - dx;
+    });
+
+    scroller.addEventListener("pointerup", end);
+    scroller.addEventListener("pointercancel", end);
+    scroller.addEventListener("lostpointercapture", end);
+  });
 }
 
 initTreeControls();

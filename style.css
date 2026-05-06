@@ -348,6 +348,8 @@
   scrollbar-gutter: stable both-edges;
   scrollbar-width: auto; /* Firefox */
   -webkit-overflow-scrolling: touch;
+  /* 스크롤바(thumb) 대신 내용 드래그로도 이동 가능하게(모바일 체감) */
+  cursor: grab;
 }
 #kinship-visual .kinship-scroll::-webkit-scrollbar {
   height: 10px;
