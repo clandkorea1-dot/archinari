@@ -10494,6 +10494,26 @@ async function resolveKinshipSlotInput(raw, slot) {
   return { ok: false, ambiguous: true, slot, candidates };
 }
 
+/** 표시 문자열 안에 '숫자 촌수' 결과인지(NFKC 후 콜론·숫자) */
+function kinshipTextHasNumericChonResult(text) {
+  const s = String(text || "").trim().replace(/\uFEFF/g, "").normalize("NFKC");
+  return /^촌수\s*[：:]\s*\d+/.test(s);
+}
+
+/** 캐시·재표시 접미어만 제거(내용 문자열 깨짐 시에도 줄일 수 있도록 최소 패턴만) */
+function kinshipStripCacheDisplaySuffix(raw) {
+  let s = String(raw || "")
+    .replace(/\s*[\u00b7·]\s*(?:이전\s*계산\s*결과|저장\s*결과)\s*$/u, "")
+    .replace(/\s*\(\s*(?:캐시\s*됨|캐시됨)\s*\)\s*$/gu, "")
+    .replace(/\s+(?:캐시\s*됨|캐시됨)\s*$/gu, "")
+    .trim();
+  const nk = s.normalize("NFKC").trim();
+  const m = nk.match(/^촌수\s*[：:]\s*(\d+)\s*\(([^)]*)\)\s*$/);
+  if (m && !/공통\s*조상/.test(m[2]))
+    s = `촌수: ${m[1]}`.replace(/\s+/g, " ").trim();
+  return s;
+}
+
 function initPersonDetailActions() {
   document.getElementById("btn-open-tree-tab")?.addEventListener("click", () => {
     showView("view-tree");
@@ -10569,6 +10589,30 @@ function initPersonDetailActions() {
       );
     };
 
+    /** 촌수 숫자 결과일 때만 관계도 UI·부계 체인 프리페치(캐시 히트/신규 공통) */
+    const showKinshipVisualIfChonResult = (resultText) => {
+      const baseText = kinshipStripCacheDisplaySuffix(resultText);
+      if (!kinshipTextHasNumericChonResult(baseText)) return;
+      if (visualBtn) {
+        visualBtn.dataset.id1 = id1;
+        visualBtn.dataset.id2 = id2;
+        visualBtn.dataset.key = key;
+        visualBtn.classList.remove("hidden");
+      }
+      if (visualHint) visualHint.classList.remove("hidden");
+      const cachedVisual = kinshipVisualCacheGet(key);
+      if (!cachedVisual) {
+        void (async () => {
+          try {
+            const data = await buildKinshipVisualFatherChains(id1, id2, 25);
+            if (data?.best?.id) kinshipVisualCacheSet(key, data);
+          } catch {
+            // ignore (prefetch)
+          }
+        })();
+      }
+    };
+
     if (out) {
       out.classList.remove("hidden");
       if (visualBtn) visualBtn.classList.add("hidden");
@@ -10581,7 +10625,9 @@ function initPersonDetailActions() {
           kinshipCache.delete(key);
           kinshipCacheSaveToStorage();
         } else {
-          out.textContent = `${cached.text} (캐시됨)`;
+          const base = kinshipStripCacheDisplaySuffix(cached.text);
+          out.textContent = base ? `${base} · 이전 계산 결과` : cached.text;
+          showKinshipVisualIfChonResult(base || cached.text);
           return;
         }
       }
@@ -10692,29 +10738,7 @@ function initPersonDetailActions() {
       }
       out.textContent = text;
       // 관계도는 자동으로 그리지 않고 버튼으로만 실행(속도 개선)
-      if (/^촌수\s*:\s*\d+/.test(text)) {
-        if (visualBtn) {
-          visualBtn.dataset.id1 = id1;
-          visualBtn.dataset.id2 = id2;
-          visualBtn.dataset.key = key;
-          visualBtn.classList.remove("hidden");
-        }
-        if (visualHint) visualHint.classList.remove("hidden");
-
-        // 체감 개선: 촌수 숫자가 확정되면 관계도에 필요한 부계 체인을 백그라운드로 미리 가져온다.
-        // 사용자가 곧바로 "관계도 보기"를 누를 때 대기 시간을 줄이기 위함.
-        const cachedVisual = kinshipVisualCacheGet(key);
-        if (!cachedVisual) {
-          void (async () => {
-            try {
-              const data = await buildKinshipVisualFatherChains(id1, id2, 25);
-              if (data?.best?.id) kinshipVisualCacheSet(key, data);
-            } catch {
-              // ignore (prefetch)
-            }
-          })();
-        }
-      }
+      showKinshipVisualIfChonResult(text);
       return;
     }
     out.textContent =

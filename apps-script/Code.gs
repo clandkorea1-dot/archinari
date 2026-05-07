@@ -473,6 +473,76 @@ function getVoteTally_(p) {
   var headerQid =
     data[0] && data[0][ixQid] != null ? String(data[0][ixQid]).trim() : "";
 
+  /**
+   * (중요 개선) 같은 B열에 과거 질문들의 드롭다운 응답이 함께 쌓이는 경우,
+   * "현재 질문"만 집계하려면 응답 행 단위로 질문 묶음을 구분해야 한다.
+   *
+   * onFormSubmit 트리거가 만들어주는 아래 스냅샷 열이 있으면,
+   * 현재 헤더(1행)의 선택/찬반 질문 제목과 "일치하는 행만" 필터링한다.
+   * - 선택문항(헤더)
+   * - 찬반문항(헤더)
+   *
+   * 추가로, 헤더가 바뀐 경우 과거 표가 섞이지 않도록 `질문스냅샷시각` 기준으로
+   * "현재 헤더 조합이 처음 등장한 시각" 이후 응답만 집계한다.
+   */
+  function normalizeHeaderSnapText_(s) {
+    return String(s == null ? "" : s)
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  function headerContains_(cell, needles) {
+    var t = normalizeHeaderSnapText_(cell).toLowerCase();
+    for (var i = 0; i < needles.length; i++) {
+      if (t.indexOf(String(needles[i]).toLowerCase()) < 0) return false;
+    }
+    return true;
+  }
+  function findHeaderIndexContains_(headerRow, needles) {
+    for (var j = 0; j < (headerRow || []).length; j++) {
+      if (headerContains_(headerRow[j], needles)) return j;
+    }
+    return -1;
+  }
+
+  var ixChoiceHeaderSnap = -1;
+  var ixProHeaderSnap = -1;
+  var ixHeaderSnapAt = -1;
+  if (headerRow && headerRow.length) {
+    // (우선) 정확한 열 이름을 먼저 찾는다. (다른 질문 헤더에 '선택' 같은 단어가 들어가도 오탐 방지)
+    ixChoiceHeaderSnap = headerRow.indexOf("선택문항(헤더)");
+    ixProHeaderSnap = headerRow.indexOf("찬반문항(헤더)");
+    ixHeaderSnapAt = headerRow.indexOf("질문스냅샷시각");
+    // (보조) 표기 흔들림이 있으면 포함 검색으로 보완
+    if (ixChoiceHeaderSnap < 0) ixChoiceHeaderSnap = findHeaderIndexContains_(headerRow, ["선택", "헤더"]);
+    if (ixProHeaderSnap < 0) ixProHeaderSnap = findHeaderIndexContains_(headerRow, ["찬반", "헤더"]);
+    if (ixHeaderSnapAt < 0) ixHeaderSnapAt = findHeaderIndexContains_(headerRow, ["스냅샷", "시각"]);
+  }
+  var currentChoiceHeader = normalizeHeaderSnapText_(headerChoice);
+  var currentProHeader = normalizeHeaderSnapText_(
+    data[0] && data[0][ixPro] != null ? String(data[0][ixPro]).trim() : ""
+  );
+
+  // "현재 헤더 조합"이 처음 등장한 시각(최소) 계산: 이 이전 응답은 과거 표로 간주하고 제외
+  var voteScopeStartMs = null;
+  if (
+    ixChoiceHeaderSnap >= 0 &&
+    ixProHeaderSnap >= 0 &&
+    ixHeaderSnapAt >= 0 &&
+    currentChoiceHeader &&
+    currentProHeader
+  ) {
+    for (var rs = 1; rs < data.length; rs++) {
+      var rowS = data[rs];
+      var snapCh = normalizeHeaderSnapText_(rowS[ixChoiceHeaderSnap]);
+      var snapPr = normalizeHeaderSnapText_(rowS[ixProHeaderSnap]);
+      if (snapCh !== currentChoiceHeader) continue;
+      if (snapPr !== currentProHeader) continue;
+      var tms = parseVoteTallyCellTime_(rowS[ixHeaderSnapAt]);
+      if (tms == null) continue;
+      if (voteScopeStartMs == null || tms < voteScopeStartMs) voteScopeStartMs = tms;
+    }
+  }
+
   if (sameChoiceAsQid) {
     latestQuestionId = "";
     hasAnyQuestionId = false;
@@ -497,6 +567,16 @@ function getVoteTally_(p) {
     if (hasAnyQuestionId) {
       if (String(row[ixQid] || "").trim() !== latestQuestionId) continue;
     }
+    // 선택 스냅샷 열이 있으면 "현재 선택 질문"과 일치하는 응답만 집계
+    if (ixChoiceHeaderSnap >= 0 && currentChoiceHeader) {
+      var snap = normalizeHeaderSnapText_(row[ixChoiceHeaderSnap]);
+      if (snap !== currentChoiceHeader) continue;
+    }
+    // 스냅샷 시각이 있으면 "현재 표 시작 시각" 이후만 집계
+    if (voteScopeStartMs != null && ixHeaderSnapAt >= 0) {
+      var tms1 = parseVoteTallyCellTime_(row[ixHeaderSnapAt]);
+      if (tms1 == null || tms1 < voteScopeStartMs) continue;
+    }
     var ch = String(row[ixChoice] || "").trim();
     if (ch) opinionChoice[ch] = (opinionChoice[ch] || 0) + 1;
   }
@@ -504,6 +584,15 @@ function getVoteTally_(p) {
     var row2 = data[r2];
     if (hasAnyAgenda && !disableAgenda) {
       if (String(row2[ixAgenda] || "").trim() !== latestAgendaIdPro) continue;
+    }
+    // 찬반 스냅샷 열이 있으면 "현재 찬반 질문"과 일치하는 응답만 집계
+    if (ixProHeaderSnap >= 0 && currentProHeader) {
+      var snap2 = normalizeHeaderSnapText_(row2[ixProHeaderSnap]);
+      if (snap2 !== currentProHeader) continue;
+    }
+    if (voteScopeStartMs != null && ixHeaderSnapAt >= 0) {
+      var tms2 = parseVoteTallyCellTime_(row2[ixHeaderSnapAt]);
+      if (tms2 == null || tms2 < voteScopeStartMs) continue;
     }
     var pc = String(row2[ixPro] || "").trim();
     if (pc) proCon[pc] = (proCon[pc] || 0) + 1;
@@ -543,6 +632,17 @@ function getVoteTally_(p) {
     out.headerPreview = headerRow.map(function (cell, i) {
       return { col: i + 1, header: String(cell != null ? cell : "").trim() };
     });
+    out.scopeDebug = {
+      currentChoiceHeader: currentChoiceHeader,
+      currentProHeader: currentProHeader,
+      ixChoiceHeaderSnap: ixChoiceHeaderSnap >= 0 ? ixChoiceHeaderSnap + 1 : -1,
+      ixProHeaderSnap: ixProHeaderSnap >= 0 ? ixProHeaderSnap + 1 : -1,
+      ixHeaderSnapAt: ixHeaderSnapAt >= 0 ? ixHeaderSnapAt + 1 : -1,
+      voteScopeStartMs: voteScopeStartMs,
+      voteScopeStartIso: voteScopeStartMs ? new Date(voteScopeStartMs).toISOString() : "",
+      note:
+        "scopeDebug는 디버그용입니다. ix*는 1-based 열 번호(A=1)입니다.",
+    };
   }
   return out;
 }
@@ -560,6 +660,105 @@ function handleVoteSubmit_(p) {
     String(p.selectedOptionLabel || ""),
   ]);
   return { ok: true, success: true, message: "투표가 반영되었습니다." };
+}
+
+/* ------------------------------------------------------------------
+ * (요청) 구글 폼 응답 행에 "질문 묶음" 스냅샷 남기기
+ * - 폼 질문/제목이 바뀌어도 응답 행 단위로 어떤 질문이었는지 추적 가능
+ * - 응답 시트 1행의 헤더(선택 문항/찬반 문항)를 해당 응답 행에 복사 기록
+ *
+ * 사용 방법(최초 1회):
+ * 1) Apps Script 편집기에서 `setupVoteOnFormSubmitTrigger_()`를 한 번 실행(권한 승인)
+ * 2) 이후 폼 응답이 들어올 때마다 자동으로 메타가 기록됨
+ * ------------------------------------------------------------------ */
+
+function resolveVoteResponseSheetNameForSubmit_(ss, props) {
+  var explicit = String(props.getProperty("VOTE_RESPONSE_SHEET_NAME") || "").trim();
+  if (explicit) return explicit;
+  // 기본값: 집계 로직과 동일한 우선순위
+  try {
+    if (ss.getSheetByName("설문지 응답 시트6")) return "설문지 응답 시트6";
+  } catch (e1) {}
+  return "voteResponse";
+}
+
+function ensureVoteResponseMetaColumns_(sh, headerRow) {
+  var header = headerRow || sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0] || [];
+  var names = header.map(function (x) {
+    return String(x == null ? "" : x).trim();
+  });
+  function findOrAppend(colName) {
+    var ix = names.indexOf(colName);
+    if (ix >= 0) return ix + 1; // 1-based
+    var newCol = names.length + 1;
+    sh.insertColumnAfter(names.length || 1);
+    sh.getRange(1, newCol).setValue(colName);
+    names.push(colName);
+    return newCol;
+  }
+  return {
+    colChoiceHeaderSnap: findOrAppend("선택문항(헤더)"),
+    colProConHeaderSnap: findOrAppend("찬반문항(헤더)"),
+    colHeaderSnapAt: findOrAppend("질문스냅샷시각"),
+  };
+}
+
+/**
+ * 폼 응답 트리거 핸들러
+ * - e.range: 새로 추가된 응답 행의 첫 셀(range) (보통 A열 타임스탬프)
+ */
+function onFormSubmit(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var props = PropertiesService.getScriptProperties();
+    var sheetName = resolveVoteResponseSheetNameForSubmit_(ss, props);
+    var sh = ss.getSheetByName(sheetName);
+    if (!sh || !e || !e.range) return;
+    var targetSheet = e.range.getSheet();
+    if (!targetSheet || targetSheet.getSheetId() !== sh.getSheetId()) return;
+
+    var row = e.range.getRow();
+    if (row < 2) return;
+
+    var data = sh.getDataRange().getValues();
+    var headerRow = data.length ? data[0] : [];
+    var cols = resolveVoteTallyColumnNumbers_(props, headerRow);
+    var colChoice = cols && cols.colChoice ? cols.colChoice : 2; // 기본 B
+    var colPro = cols && cols.colPro ? cols.colPro : 4; // 기본 D
+
+    var metaCols = ensureVoteResponseMetaColumns_(sh, headerRow);
+    var choiceHeader = String(sh.getRange(1, colChoice).getDisplayValue() || "").trim();
+    var proHeader = String(sh.getRange(1, colPro).getDisplayValue() || "").trim();
+    var stamp = new Date();
+
+    sh.getRange(row, metaCols.colChoiceHeaderSnap).setValue(choiceHeader);
+    sh.getRange(row, metaCols.colProConHeaderSnap).setValue(proHeader);
+    sh.getRange(row, metaCols.colHeaderSnapAt).setValue(stamp);
+  } catch (err) {
+    // 트리거는 조용히 실패할 수 있어, 로그를 남긴다.
+    try {
+      Logger.log(String(err && err.stack ? err.stack : err));
+    } catch (_) {}
+  }
+}
+
+/**
+ * (최초 1회) 폼 제출 트리거 설치 함수
+ * - 스크립트 편집기에서 실행하면 권한 승인 후 트리거가 생성됩니다.
+ */
+function setupVoteOnFormSubmitTrigger_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  // 중복 생성 방지: 동일 핸들러/스프레드시트 트리거가 이미 있으면 종료
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    var t = triggers[i];
+    if (t.getHandlerFunction && t.getHandlerFunction() === "onFormSubmit") {
+      var src = t.getTriggerSource && t.getTriggerSource();
+      if (String(src) === String(ScriptApp.TriggerSource.SPREADSHEETS)) return { ok: true, already: true };
+    }
+  }
+  ScriptApp.newTrigger("onFormSubmit").forSpreadsheet(ss).onFormSubmit().create();
+  return { ok: true, created: true };
 }
 
 /**
