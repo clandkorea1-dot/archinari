@@ -1161,8 +1161,15 @@ function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId)
     if (!isFemaleByRow) continue;
 
     const oesonList = getOesonList(F.row);
-    const wantRaw = oesonList[0];
-    if (!wantRaw || !String(wantRaw).trim()) continue;
+    const wantRaw0 = oesonList[0];
+    if (!wantRaw0 || !String(wantRaw0).trim()) continue;
+    // 외손 칸 파싱이 실패(특수 공백/구분자 등)해도 첫 토큰 1인만 쓰도록 2차 방어
+    const wantRaw = String(wantRaw0)
+      .trim()
+      .split(/[,，、\n\s/|;·]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)[0];
+    if (!wantRaw) continue;
     const want = normalizeNameTokenForOesonMatch(wantRaw);
     if (!want) continue;
 
