@@ -1062,6 +1062,21 @@ function splitPeopleList(val) {
     .filter(Boolean);
 }
 
+/** 외손 칸은 띄어쓰기로 여러 명이 들어오는 케이스가 있어 공백도 분리(32+ 하단 규칙 전용) */
+function splitOesonPeopleList(val) {
+  if (val == null || val === "") return [];
+  if (Array.isArray(val)) {
+    return val
+      .flatMap((s) => String(s).split(/\s+/g))
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return String(val)
+    .split(/[,，、\n\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 /** 32세 하단 외손 이름·시트 표기 매칭용(괄호·공백 제거) */
 function normalizeNameTokenForOesonMatch(s) {
   return String(s || "")
@@ -1127,7 +1142,7 @@ function applyGen32FemaleOesonSingleChildRule(keepMap, childrenByFather, rootId)
   const OESON_RULE_MAX_GEN = 36;
 
   const getOesonList = (row) =>
-    splitPeopleList(
+    splitOesonPeopleList(
       row?.["외손"] ??
         row?.["외손자"] ??
         row?.["외손녀"] ??
